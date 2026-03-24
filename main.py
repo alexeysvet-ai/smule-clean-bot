@@ -27,10 +27,14 @@ BLACKLIST_FILE = "proxy_blacklist.txt"
 
 WELCOME_TEXT = (
     "👋 Привет!\n\n"
-    "Это простой бот для скачивания видео с YouTube.\n\n"
+    "Я бот для скачивания видео и аудио.\n\n"
+    "Поддерживаются:\n"
+    "• YouTube\n"
+    "• VK\n"
+    "• Mail.ru\n\n"
     "🚫 Без рекламы и лишних действий.\n\n"
-    "⚠️ Бот сейчас тестируется, возможны задержки.\n\n"
-    "Просто отправь ссылку 👇"
+    "⚠️ Сейчас тестируемся, возможны задержки.\n\n"
+    "Отправь ссылку 👇"
 )
 
 if not TOKEN:
@@ -40,7 +44,6 @@ bot = Bot(token=TOKEN)
 dp = Dispatcher()
 semaphore = asyncio.Semaphore(MAX_CONCURRENT_DOWNLOADS)
 
-# временное хранилище
 user_requests = {}
 
 # ===================== LOG =====================
@@ -53,7 +56,6 @@ def log(msg):
 def ensure_file(path):
     if not os.path.exists(path):
         open(path, "w").close()
-        log(f"[FILE CREATED] {path}")
 
 def load_proxies():
     ensure_file(PROXY_FILE)
@@ -151,7 +153,23 @@ async def safe_download(url: str, mode: str) -> str:
             timeout=DOWNLOAD_TIMEOUT
         )
 
-# ===================== HANDLERS =====================
+# ===================== HELPERS =====================
+
+def is_supported_url(url: str) -> bool:
+    return any(x in url for x in [
+        "youtube.com",
+        "youtu.be",
+        "vk.com",
+        "mail.ru",
+        "rutube.ru"
+    ])
+
+def cleanup_file(path: str):
+    try:
+        if os.path.exists(path):
+            os.remove(path)
+    except:
+        pass
 
 def quality_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -164,6 +182,8 @@ def quality_keyboard():
         ]
     ])
 
+# ===================== HANDLERS =====================
+
 @dp.message(Command("start"))
 async def start(message: types.Message):
     await message.answer(WELCOME_TEXT)
@@ -175,8 +195,8 @@ async def handle_video(message: types.Message):
 
     url = message.text.strip()
 
-    if "youtube.com" not in url and "youtu.be" not in url:
-        await message.answer("Это не ссылка на YouTube")
+    if not is_supported_url(url):
+        await message.answer("Сервис пока не поддерживается")
         return
 
     user_requests[message.from_user.id] = url
@@ -195,7 +215,6 @@ async def handle_quality(callback: types.CallbackQuery):
         return
 
     url = user_requests[user_id]
-
     mode = callback.data.replace("q_", "")
 
     await callback.message.edit_text("Скачиваю... ⏳")
@@ -221,8 +240,8 @@ async def handle_quality(callback: types.CallbackQuery):
         log(f"[ERROR] {e}")
         await callback.message.answer("Ошибка при загрузке ❌")
     finally:
-        if file_path and os.path.exists(file_path):
-            os.remove(file_path)
+        if file_path:
+            cleanup_file(file_path)
 
 # ===================== WEB =====================
 
