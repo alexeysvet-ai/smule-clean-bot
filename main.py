@@ -25,6 +25,15 @@ MAX_CONCURRENT_DOWNLOADS = int(os.getenv("MAX_CONCURRENT_DOWNLOADS", 2))
 PROXY_FILE = "proxies.txt"
 BLACKLIST_FILE = "proxy_blacklist.txt"
 
+# 🟡 Режим тестирования
+MAINTENANCE_MODE = True
+
+MAINTENANCE_TEXT = (
+    "🚧 Бот скоро заработает\n\n"
+    "Сейчас мы тестируем загрузку видео и улучшаем стабильность.\n"
+    "Попробуйте чуть позже 🙏"
+)
+
 if not TOKEN:
     raise ValueError("TOKEN not set")
 
@@ -39,11 +48,14 @@ semaphore = asyncio.Semaphore(MAX_CONCURRENT_DOWNLOADS)
 def ensure_file(path):
     if not os.path.exists(path):
         open(path, "w").close()
+        logging.info(f"[FILE CREATED] {path}")
 
 def load_proxies():
     ensure_file(PROXY_FILE)
     with open(PROXY_FILE, "r") as f:
-        return [line.strip() for line in f if line.strip()]
+        proxies = [line.strip() for line in f if line.strip()]
+    logging.info(f"[PROXIES LOADED] count={len(proxies)}")
+    return proxies
 
 def load_blacklist():
     ensure_file(BLACKLIST_FILE)
@@ -61,15 +73,18 @@ def add_to_blacklist(proxy):
     with open(BLACKLIST_FILE, "a") as f:
         f.write(proxy + "\n")
 
+    logging.warning(f"[BLACKLIST ADDED] {proxy}")
+
 def get_active_proxies():
     proxies = load_proxies()
     blacklist = load_blacklist()
 
     active = [p for p in proxies if p not in blacklist]
 
-    # сначала без прокси
     result = [None] + active
     random.shuffle(result)
+
+    logging.info(f"[ACTIVE PROXIES] total={len(result)}")
     return result
 
 # ===================== HEALTH =====================
@@ -102,44 +117,54 @@ def download_video(url: str) -> str:
     unique_id = uuid.uuid4().hex
     proxies = get_active_proxies()
 
+    logging.info(f"[DOWNLOAD START] url={url}")
+
     errors = []
 
-    for proxy in proxies:
+    for idx, proxy in enumerate(proxies):
         try:
+            logging.info(f"[TRY {idx+1}/{len(proxies)}] proxy={proxy}")
+
             ydl_opts = {
                 "format": "best[ext=mp4][height<=480]/best[ext=mp4]/best",
                 "outtmpl": f"/tmp/{unique_id}_%(id)s.%(ext)s",
                 "noplaylist": True,
-                "quiet": True,
-                "retries": 3,
+                "quiet": False,
+                "retries": 2,
                 "socket_timeout": 20,
                 "nocheckcertificate": True,
                 "http_headers": {
                     "User-Agent": "Mozilla/5.0 Chrome/120 Safari/537.36"
-                }
+                },
+                "logger": logging.getLogger("yt_dlp"),
             }
 
             if proxy:
                 ydl_opts["proxy"] = proxy
-                logging.info(f"Trying proxy: {proxy}")
-            else:
-                logging.info("Trying without proxy")
+
+            logging.info(f"[YTDLP START] proxy={proxy}")
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
-                return ydl.prepare_filename(info)
+
+                logging.info(f"[YTDLP SUCCESS] proxy={proxy}")
+
+                filename = ydl.prepare_filename(info)
+                logging.info(f"[FILE SAVED] {filename}")
+
+                return filename
 
         except Exception as e:
             err = str(e)
-            logging.warning(f"FAILED with {proxy}: {err}")
+            logging.error(f"[ERROR] proxy={proxy} error={err}")
 
             if proxy and should_blacklist(err):
-                logging.warning(f"BLACKLISTING proxy: {proxy}")
                 add_to_blacklist(proxy)
 
-            errors.append(err)
+            errors.append(f"{proxy} -> {err}")
             continue
 
+    logging.error("[ALL PROXIES FAILED]")
     raise Exception("All proxies failed:\n" + "\n".join(errors))
 
 async def safe_download(url: str) -> str:
@@ -158,6 +183,7 @@ def cleanup_file(path: str):
     try:
         if os.path.exists(path):
             os.remove(path)
+            logging.info(f"[FILE REMOVED] {path}")
     except Exception as e:
         logging.warning(f"Cleanup failed: {e}")
 
@@ -165,49 +191,11 @@ def cleanup_file(path: str):
 
 @dp.message(Command("start"))
 async def start(message: types.Message):
-    await message.answer("Пришли ссылку на YouTube 🎬")
+    await message.answer(MAINTENANCE_TEXT)
 
 @dp.message()
 async def handle_video(message: types.Message):
-    if not message.text:
-        await message.answer("Нужна текстовая ссылка")
-        return
-
-    url = message.text.strip()
-    user_id = message.from_user.id
-
-    logging.info(f"{user_id} -> {url}")
-
-    if not is_youtube_url(url):
-        await message.answer("Это не ссылка на YouTube")
-        return
-
-    await message.answer("Скачиваю... ⏳")
-
-    file_path = None
-
-    try:
-        file_path = await safe_download(url)
-
-        if not file_path or not os.path.exists(file_path):
-            raise RuntimeError("Файл не создан")
-
-        size = os.path.getsize(file_path)
-
-        if size > MAX_FILE_SIZE:
-            await message.answer("Файл слишком большой (>50MB)")
-            return
-
-        await message.answer_video(types.FSInputFile(file_path))
-
-    except asyncio.TimeoutError:
-        await message.answer("Слишком долго скачивается ⏱")
-    except Exception as e:
-        logging.exception(e)
-        await message.answer("Ошибка при загрузке ❌")
-    finally:
-        if file_path:
-            cleanup_file(file_path)
+    await message.answer(MAINTENANCE_TEXT)
 
 # ===================== WEBHOOK =====================
 
