@@ -91,14 +91,14 @@ async def process_download(callback, user_id, url, mode):
     file_path = None
 
     try:
-       result = await safe_download(url, mode)
+        result = await safe_download(url, mode)
 
-       # 🔥 поддержка старого и нового формата
-       if isinstance(result, tuple):
-         file_path, info = result
-       else:
-         file_path = result
-         info = {}
+        # 🔥 поддержка старого и нового формата
+        if isinstance(result, tuple):
+            file_path, info = result
+        else:
+            file_path = result
+            info = {}
 
         if not file_path or not os.path.exists(file_path):
             raise RuntimeError("File not created")
@@ -109,10 +109,9 @@ async def process_download(callback, user_id, url, mode):
             await callback.message.answer(t("too_big", user_id) + url)
             return
 
-        # 🔥 Формируем инфо
         title = info.get("title", "Unknown")
         ext = info.get("ext", "")
-        abr = info.get("abr")  # bitrate audio
+        abr = info.get("abr")
 
         size_mb = round(size / (1024 * 1024), 2)
 
@@ -122,7 +121,6 @@ async def process_download(callback, user_id, url, mode):
         if mode == "audio" and abr:
             info_text += f" | {int(abr)} kbps"
 
-        # Финальное сообщение
         await callback.message.answer(t("success", user_id) + "\n\n" + info_text)
 
         if mode == "audio":
