@@ -13,10 +13,16 @@ semaphore = asyncio.Semaphore(1)
 user_lang = {}
 user_requests = {}
 
+# ===================== TEXTS =====================
+
 TEXTS = {
     "welcome": {
         "ru": "👋 Привет! Отправь ссылку 👇",
         "en": "👋 Hi! Send a link 👇"
+    },
+    "choose_lang": {
+        "ru": "Выбери язык:",
+        "en": "Choose language:"
     },
     "choose_format": {
         "ru": "Выбери формат:",
@@ -27,40 +33,45 @@ TEXTS = {
         "en": "🔍 Starting..."
     },
     "status_1": {
-        "ru": "🌐 Подбираю прокси...",
+        "ru": "🌐 Подбираю рабочий прокси...",
         "en": "🌐 Selecting proxy..."
     },
     "status_2": {
-        "ru": "🛡 Обхожу ограничения...",
-        "en": "🛡 Bypassing..."
+        "ru": "🛡 Обхожу ограничения YouTube...",
+        "en": "🛡 Bypassing restrictions..."
     },
     "status_3": {
-        "ru": "⬇️ Загружаю...",
+        "ru": "⬇️ Загружаю видео...",
         "en": "⬇️ Downloading..."
     },
     "success": {
         "ru": "✅ Готово!",
         "en": "✅ Done!"
     },
+    "too_big": {
+        "ru": "⚠️ Видео слишком большое (>50MB)\n\nЭто ограничение Telegram\n\nСсылка:\n",
+        "en": "⚠️ File too large (>50MB)\n\nTelegram limitation\n\nLink:\n"
+    },
     "error": {
-    "ru": "😔 К сожалению, сейчас не удалось скачать видео.\n\n"
-          "Я попробовал несколько способов, но сервис временно блокирует загрузку.\n\n"
-          "Попробуй чуть позже 🙏",
-    "en": "😔 Failed to download.\n\n"
-          "I tried multiple methods, but the service is temporarily blocking requests.\n\n"
-          "Please try again later 🙏"
+        "ru": "😔 К сожалению, сейчас не удалось скачать видео.\n\n"
+              "Я попробовал несколько способов, но сервис временно блокирует загрузку.\n\n"
+              "Попробуй чуть позже 🙏",
+        "en": "😔 Failed to download.\n\n"
+              "I tried multiple methods, but the service is temporarily blocking requests.\n\n"
+              "Please try again later 🙏"
     }
 }
 
 def t(key, user_id):
     return TEXTS[key][user_lang.get(user_id, "ru")]
 
-async def safe_download(url, mode):
-    async with semaphore:
-        return await asyncio.wait_for(
-            asyncio.to_thread(download_video, url, mode),
-            timeout=DOWNLOAD_TIMEOUT
-        )
+# ===================== UI =====================
+
+def lang_keyboard():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🇷🇺", callback_data="lang_ru"),
+         InlineKeyboardButton(text="🇺🇸", callback_data="lang_en")]
+    ])
 
 def quality_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -71,11 +82,30 @@ def quality_keyboard():
         [InlineKeyboardButton(text="Audio", callback_data="q_audio")]
     ])
 
+# ===================== DOWNLOAD =====================
+
+async def safe_download(url, mode):
+    async with semaphore:
+        return await asyncio.wait_for(
+            asyncio.to_thread(download_video, url, mode),
+            timeout=DOWNLOAD_TIMEOUT
+        )
+
+# ===================== HANDLERS =====================
+
 def register_handlers(dp: Dispatcher):
 
     @dp.message(Command("start"))
     async def start(message: types.Message):
-        await message.answer(t("welcome", message.from_user.id))
+        await message.answer(
+            TEXTS["choose_lang"]["ru"] + " / " + TEXTS["choose_lang"]["en"],
+            reply_markup=lang_keyboard()
+        )
+
+    @dp.callback_query(lambda c: c.data.startswith("lang_"))
+    async def set_lang(callback: types.CallbackQuery):
+        user_lang[callback.from_user.id] = callback.data.split("_")[1]
+        await callback.message.edit_text(t("welcome", callback.from_user.id))
 
     @dp.message()
     async def handle_video(message: types.Message):
@@ -92,6 +122,7 @@ def register_handlers(dp: Dispatcher):
         mode = callback.data.split("_")[1]
 
         await callback.message.answer(t("start", user_id))
+
         await callback.message.answer(t("status_1", user_id))
         await asyncio.sleep(1)
         await callback.message.answer(t("status_2", user_id))
@@ -107,7 +138,7 @@ def register_handlers(dp: Dispatcher):
             size = os.path.getsize(file_path)
 
             if size > MAX_FILE_SIZE:
-                await callback.message.answer("⚠️ File too large (>50MB)")
+                await callback.message.answer(t("too_big", user_id) + url)
                 return
 
             await callback.message.answer(t("success", user_id))
