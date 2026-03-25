@@ -1,69 +1,188 @@
-# [BUILD 20260326-PROD-05] stable handlers without dp decorators
+import os
+import asyncio
+import re
+from pathlib import Path
+from aiogram import types, Dispatcher
+from aiogram.filters import Command
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-from aiogram import types
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
-
+from config import DOWNLOAD_TIMEOUT, MAX_FILE_SIZE
 from downloader import download_video
-import logger as log
+from utils import log
+from texts import TEXTS
 
-req = {}
+semaphore = asyncio.Semaphore(1)
 
-# --- keyboards ---
-def format_kb():
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="Аудио"), KeyboardButton(text="Видео")]
-        ],
-        resize_keyboard=True
-    )
+user_lang = {}
+user_requests = {}
 
+# ===================== HELPERS =====================
 
-def register(dp):
+def t(key, user_id):
+    return TEXTS[key][user_lang.get(user_id, "ru")]
 
-    async def start(message: types.Message):
-        await message.answer("Отправь ссылку на видео")
+def sanitize_filename(name: str) -> str:
+    return re.sub(r'[\\/*?:"<>|]', "", name)
 
-    async def handle_url(message: types.Message):
-        if not message.text or "http" not in message.text:
-            return
+def safe_title(info, file_path):
+    title = (info.get("title") or "").strip()
 
-        user_id = message.from_user.id
-        url = message.text.strip()
+    if not title or title.lower() in ["unknown", "na", "none"]:
+        title = Path(file_path).stem
 
-        req[user_id] = url
+    return sanitize_filename(title)
 
-        log.info(f"[REQUEST] user={user_id} url={url}")
+# ===================== UI =====================
 
-        await message.answer(
-            "Выбери формат",
-            reply_markup=format_kb()
+def lang_keyboard():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🇷🇺", callback_data="lang_ru"),
+         InlineKeyboardButton(text="🇺🇸", callback_data="lang_en")]
+    ])
+
+def quality_keyboard():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="720p", callback_data="q_720"),
+         InlineKeyboardButton(text="360p", callback_data="q_360")],
+        [InlineKeyboardButton(text="240p", callback_data="q_240"),
+         InlineKeyboardButton(text="144p", callback_data="q_144")],
+        [InlineKeyboardButton(text="Audio", callback_data="q_audio")]
+    ])
+
+# ===================== DOWNLOAD =====================
+
+async def safe_download(url, mode):
+    async with semaphore:
+        return await asyncio.wait_for(
+            asyncio.to_thread(download_video, url, mode),
+            timeout=DOWNLOAD_TIMEOUT
         )
 
-    async def handle_format(message: types.Message):
-        if message.text not in ["Аудио", "Видео"]:
-            return
+# ===================== HANDLERS =====================
 
+def register_handlers(dp: Dispatcher):
+
+    @dp.message(Command("start"))
+    async def start(message: types.Message):
+        await message.answer(
+            TEXTS["choose_lang"]["ru"] + " / " + TEXTS["choose_lang"]["en"],
+            reply_markup=lang_keyboard()
+        )
+
+    @dp.callback_query(lambda c: c.data.startswith("lang_"))
+    async def set_lang(callback: types.CallbackQuery):
+        user_lang[callback.from_user.id] = callback.data.split("_")[1]
+        await callback.message.edit_text(t("welcome", callback.from_user.id))
+
+    @dp.message(lambda message: message.text and not message.text.startswith("/"))
+    async def handle_video(message: types.Message):
         user_id = message.from_user.id
+        url = (message.text or "").strip()
 
-        if user_id not in req:
-            await message.answer("Сначала пришли ссылку")
+        if not url:
             return
 
-        url = req[user_id]
-        fmt = "audio" if message.text == "Аудио" else "video"
+        user_requests[user_id] = url
 
-        log.info(f"[FORMAT] user={user_id} format={fmt}")
+        await message.answer(
+            t("choose_format", user_id),
+            reply_markup=quality_keyboard()
+        )
 
-        await message.answer("Скачиваю...")
+    @dp.callback_query(lambda c: c.data.startswith("q_"))
+    async def handle_quality(callback: types.CallbackQuery):
+        user_id = callback.from_user.id
+        url = user_requests.get(user_id)
+        mode = callback.data.split("_")[1]
+
+        await callback.answer()
+
+        asyncio.create_task(process_download(callback, user_id, url, mode))
+
+
+# ===================== PROCESS =====================
+
+async def process_download(callback, user_id, url, mode):
+    await callback.message.answer(t("start", user_id))
+
+    await callback.message.answer(t("status_1", user_id))
+    await asyncio.sleep(1)
+    await callback.message.answer(t("status_2", user_id))
+    await asyncio.sleep(1)
+
+    # 👇 ключевой фикс UX
+    if mode == "audio":
+        await callback.message.answer(t("status_audio", user_id))
+    else:
+        await callback.message.answer(t("status_video", user_id))
+
+    file_path = None
+
+    try:
+        result = await safe_download(url, mode)
+
+        if isinstance(result, tuple):
+            file_path, info = result
+        else:
+            file_path = result
+            info = {}
+
+        if not file_path or not os.path.exists(file_path):
+            raise RuntimeError("File not created")
+
+        size = os.path.getsize(file_path)
+        size_mb = round(size / (1024 * 1024), 2)
+
+        if size > MAX_FILE_SIZE:
+            await callback.message.answer(t("too_big", user_id) + url)
+            return
+
+        # ===== TITLE FIX =====
+        title = safe_title(info, file_path)
+        ext = info.get("ext", "mp4")
+        abr = info.get("abr")
+        uploader = info.get("uploader", "")
+
+        new_path = f"/tmp/{title}.{ext}"
 
         try:
-            await download_video(url, fmt, message)
-            log.info(f"[SUCCESS] user={user_id}")
+            os.rename(file_path, new_path)
+            file_path = new_path
         except Exception as e:
-            log.error(f"[ERROR] user={user_id} err={e}")
-            await message.answer("Ошибка при скачивании")
+            log(f"[RENAME ERROR] {e}")
 
-    # 👇 РЕГИСТРАЦИЯ (v3-совместимая)
-    dp.message.register(start, commands=["start"])
-    dp.message.register(handle_url)
-    dp.message.register(handle_format)
+        # ===== RESULT TEXT =====
+        result_text = t("file_info", user_id).format(
+            ext=ext.upper(),
+            size=size_mb
+        )
+
+        if mode == "audio" and abr:
+            result_text += f" | {int(abr)} kbps"
+
+        await callback.message.answer(
+            t("success", user_id) + "\n\n" + result_text
+        )
+
+        # ===== SEND (КРИТИЧНЫЙ ФИКС) =====
+        if mode == "audio":
+            await callback.message.answer_audio(
+                types.FSInputFile(file_path),
+                title=title,
+                performer=uploader or ""
+            )
+        else:
+            await callback.message.answer_video(
+                types.FSInputFile(file_path)
+            )
+
+    except Exception as e:
+        log(f"[FINAL ERROR] {e}")
+        await callback.message.answer(t("error", user_id))
+
+    finally:
+        if file_path and os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+            except Exception as e:
+                log(f"[CLEANUP ERROR] {e}")
