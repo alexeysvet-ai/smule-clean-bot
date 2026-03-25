@@ -15,11 +15,15 @@ semaphore = asyncio.Semaphore(1)
 user_lang = {}
 user_requests = {}
 
+# ===================== HELPERS =====================
+
 def t(key, user_id):
     return TEXTS[key][user_lang.get(user_id, "ru")]
 
 def sanitize_filename(name: str) -> str:
     return re.sub(r'[\\/*?:"<>|]', "", name)
+
+# ===================== UI =====================
 
 def lang_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -36,12 +40,16 @@ def quality_keyboard():
         [InlineKeyboardButton(text="Audio", callback_data="q_audio")]
     ])
 
+# ===================== DOWNLOAD =====================
+
 async def safe_download(url, mode):
     async with semaphore:
         return await asyncio.wait_for(
             asyncio.to_thread(download_video, url, mode),
             timeout=DOWNLOAD_TIMEOUT
         )
+
+# ===================== HANDLERS =====================
 
 def register_handlers(dp: Dispatcher):
 
@@ -83,6 +91,8 @@ def register_handlers(dp: Dispatcher):
         asyncio.create_task(process_download(callback, user_id, url, mode))
 
 
+# ===================== PROCESS =====================
+
 async def process_download(callback, user_id, url, mode):
     await callback.message.answer(t("start", user_id))
 
@@ -97,6 +107,7 @@ async def process_download(callback, user_id, url, mode):
     try:
         result = await safe_download(url, mode)
 
+        # fallback совместимость
         if isinstance(result, tuple):
             file_path, info = result
         else:
@@ -113,6 +124,7 @@ async def process_download(callback, user_id, url, mode):
             await callback.message.answer(t("too_big", user_id) + url)
             return
 
+        # ===== имя файла =====
         title = sanitize_filename(info.get("title", "file"))
         ext = info.get("ext", "mp4")
         abr = info.get("abr")
@@ -125,7 +137,7 @@ async def process_download(callback, user_id, url, mode):
         except Exception as e:
             log(f"[RENAME ERROR] {e}")
 
-        # 🔥 текст с языком
+        # ===== текст результата =====
         result_text = t("file_info", user_id).format(
             ext=ext.upper(),
             size=size_mb
@@ -134,8 +146,11 @@ async def process_download(callback, user_id, url, mode):
         if mode == "audio" and abr:
             result_text += f" | {int(abr)} kbps"
 
-        await callback.message.answer(t("success", user_id) + "\n\n" + result_text)
+        await callback.message.answer(
+            t("success", user_id) + "\n\n" + result_text
+        )
 
+        # ===== отправка =====
         if mode == "audio":
             await callback.message.answer_audio(types.FSInputFile(file_path))
         else:
