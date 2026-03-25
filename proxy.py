@@ -1,99 +1,44 @@
 import time
-import random
 
-from config import PROXY_FILE, BLACKLIST_FILE, TTL_SHORT, TTL_MEDIUM, TTL_LONG
-from utils import ensure_file
+PROXIES = []
 
-proxy_stats = {}
+state = {}
+blacklist = {}
 
-def record_success(proxy):
-    if not proxy:
-        return
-    stat = proxy_stats.setdefault(proxy, {"ok": 0, "fail": 0})
-    stat["ok"] += 1
-
-def record_fail(proxy):
-    if not proxy:
-        return
-    stat = proxy_stats.setdefault(proxy, {"ok": 0, "fail": 0})
-    stat["fail"] += 1
-
-def proxy_score(proxy):
-    stat = proxy_stats.get(proxy)
-    if not stat:
-        return 0
-    return stat["ok"] - stat["fail"]
-def normalize_proxy(proxy: str) -> str:
-    if not proxy:
-        return None
-
-    proxy = proxy.strip()
-
-    if proxy.startswith("http://") or proxy.startswith("https://"):
-        return proxy
-
-    return f"http://{proxy}"
+SHORT, MEDIUM, LONG = 10, 60, 300
 
 
-def load_blacklist():
-    ensure_file(BLACKLIST_FILE)
-    result = {}
-
-    with open(BLACKLIST_FILE, "r") as f:
-        for line in f:
-            if "|" in line:
-                proxy, ts = line.strip().split("|")
-                result[proxy] = float(ts)
-
-    return result
-
-def save_blacklist(data):
-    with open(BLACKLIST_FILE, "w") as f:
-        for proxy, ts in data.items():
-            f.write(f"{proxy}|{ts}\n")
+def score(p):
+    s = state.get(p, {"s": 0, "f": 0})
+    return s["s"] - s["f"]
 
 
-def get_ttl(error_text: str) -> int:
-    error_text = error_text.lower()
-
-    if "sign in" in error_text:
-        return TTL_LONG
-    if "403" in error_text or "forbidden" in error_text:
-        return TTL_MEDIUM
-    return TTL_SHORT
+def sorted_proxies():
+    return sorted(PROXIES, key=score, reverse=True)
 
 
-def add_to_blacklist(proxy, error_text):
-    if not proxy:
-        return
-
-    bl = load_blacklist()
-    ttl = get_ttl(error_text)
-    bl[proxy] = time.time() + ttl
-    save_blacklist(bl)
+def is_bad(p):
+    return p in blacklist and time.time() < blacklist[p]
 
 
-def load_proxies():
-    ensure_file(PROXY_FILE)
-
-    proxies = []
-    with open(PROXY_FILE) as f:
-        for line in f:
-            p = line.strip()
-            if not p:
-                continue
-            proxies.append(normalize_proxy(p))
-
-    return proxies
+def mark_ok(p):
+    s = state.setdefault(p, {"s": 0, "f": 0})
+    s["s"] += 1
 
 
-def get_active_proxies():
-    proxies = load_proxies()
-    bl = load_blacklist()
-    now = time.time()
+def mark_fail(p):
+    s = state.setdefault(p, {"s": 0, "f": 0})
+    s["f"] += 1
 
-    active = [p for p in proxies if p not in bl or bl[p] < now]
 
-    active.sort(key=lambda p: proxy_score(p), reverse=True)
+def ban(p, err):
+    ttl = SHORT
+    if "403" in err:
+        ttl = MEDIUM
+    if "sign" in err:
+        ttl = LONG
+    blacklist[p] = time.time() + ttl
 
-    return active
+
+def get():
+    return [p for p in sorted_proxies() if not is_bad(p)]
