@@ -23,7 +23,6 @@ def download_video(url, mode):
         try:
             log(f"[TRY {idx+1}/{len(proxies)}] proxy={proxy}")
 
-            # 🔥 fallback формат (если основной не сработает)
             format_string = fmt_map.get(mode, "best")
             format_with_fallback = f"{format_string}/best"
 
@@ -57,7 +56,7 @@ def download_video(url, mode):
                 record_success(proxy)
                 log(f"[SUCCESS] proxy={proxy} score={proxy_score(proxy)}")
 
-                return filename
+                return filename, info
 
         except Exception as e:
             err = str(e)
