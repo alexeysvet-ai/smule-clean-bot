@@ -77,5 +77,9 @@ TEXTS = {
         "en": "😔 Failed to download.\n\n"
               "I tried multiple methods, but the service is temporarily blocking requests.\n\n"
               "Please try again later 🙏"
-    }
+    },
+    "file_info": {
+        "ru": "Скачан файл | {ext} | {size} MB",
+        "en": "File downloaded | {ext} | {size} MB"
+}
 }
