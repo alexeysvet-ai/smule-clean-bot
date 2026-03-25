@@ -1,6 +1,7 @@
 import os
 import asyncio
 import re
+from pathlib import Path
 from aiogram import types, Dispatcher
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -22,6 +23,14 @@ def t(key, user_id):
 
 def sanitize_filename(name: str) -> str:
     return re.sub(r'[\\/*?:"<>|]', "", name)
+
+def safe_title(info, file_path):
+    title = (info.get("title") or "").strip()
+
+    if not title or title.lower() in ["unknown", "na", "none"]:
+        title = Path(file_path).stem
+
+    return sanitize_filename(title)
 
 # ===================== UI =====================
 
@@ -100,14 +109,18 @@ async def process_download(callback, user_id, url, mode):
     await asyncio.sleep(1)
     await callback.message.answer(t("status_2", user_id))
     await asyncio.sleep(1)
-    await callback.message.answer(t("status_3", user_id))
+
+    # 👇 ключевой фикс UX
+    if mode == "audio":
+        await callback.message.answer(t("status_audio", user_id))
+    else:
+        await callback.message.answer(t("status_video", user_id))
 
     file_path = None
 
     try:
         result = await safe_download(url, mode)
 
-        # fallback совместимость
         if isinstance(result, tuple):
             file_path, info = result
         else:
@@ -124,10 +137,11 @@ async def process_download(callback, user_id, url, mode):
             await callback.message.answer(t("too_big", user_id) + url)
             return
 
-        # ===== имя файла =====
-        title = sanitize_filename(info.get("title", "file"))
+        # ===== TITLE FIX =====
+        title = safe_title(info, file_path)
         ext = info.get("ext", "mp4")
         abr = info.get("abr")
+        uploader = info.get("uploader", "")
 
         new_path = f"/tmp/{title}.{ext}"
 
@@ -137,7 +151,7 @@ async def process_download(callback, user_id, url, mode):
         except Exception as e:
             log(f"[RENAME ERROR] {e}")
 
-        # ===== текст результата =====
+        # ===== RESULT TEXT =====
         result_text = t("file_info", user_id).format(
             ext=ext.upper(),
             size=size_mb
@@ -150,11 +164,17 @@ async def process_download(callback, user_id, url, mode):
             t("success", user_id) + "\n\n" + result_text
         )
 
-        # ===== отправка =====
+        # ===== SEND (КРИТИЧНЫЙ ФИКС) =====
         if mode == "audio":
-            await callback.message.answer_audio(types.FSInputFile(file_path))
+            await callback.message.answer_audio(
+                types.FSInputFile(file_path),
+                title=title,
+                performer=uploader or ""
+            )
         else:
-            await callback.message.answer_video(types.FSInputFile(file_path))
+            await callback.message.answer_video(
+                types.FSInputFile(file_path)
+            )
 
     except Exception as e:
         log(f"[FINAL ERROR] {e}")
