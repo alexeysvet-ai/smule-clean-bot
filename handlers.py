@@ -61,57 +61,68 @@ def register_handlers(dp: Dispatcher):
         user_lang[callback.from_user.id] = callback.data.split("_")[1]
         await callback.message.edit_text(t("welcome", callback.from_user.id))
 
-    @dp.message()
+    @dp.message(lambda message: message.text and not message.text.startswith("/"))
     async def handle_video(message: types.Message):
         user_id = message.from_user.id
         url = (message.text or "").strip()
 
+        if not url:
+            return
+
         user_requests[user_id] = url
+
         await message.answer(
             t("choose_format", user_id),
             reply_markup=quality_keyboard()
         )
 
+    # 🔥 ВАЖНО: быстрый ответ + фоновая задача
     @dp.callback_query(lambda c: c.data.startswith("q_"))
     async def handle_quality(callback: types.CallbackQuery):
         user_id = callback.from_user.id
         url = user_requests.get(user_id)
         mode = callback.data.split("_")[1]
 
-        await callback.message.answer(t("start", user_id))
+        await callback.answer()  # мгновенный ответ Telegram
 
-        await callback.message.answer(t("status_1", user_id))
-        await asyncio.sleep(1)
-        await callback.message.answer(t("status_2", user_id))
-        await asyncio.sleep(1)
-        await callback.message.answer(t("status_3", user_id))
+        asyncio.create_task(process_download(callback, user_id, url, mode))
 
-        try:
-            file_path = await safe_download(url, mode)
 
-            if not file_path or not os.path.exists(file_path):
-                raise RuntimeError("File not created")
+async def process_download(callback, user_id, url, mode):
+    await callback.message.answer(t("start", user_id))
 
-            size = os.path.getsize(file_path)
+    await callback.message.answer(t("status_1", user_id))
+    await asyncio.sleep(1)
+    await callback.message.answer(t("status_2", user_id))
+    await asyncio.sleep(1)
+    await callback.message.answer(t("status_3", user_id))
 
-            if size > MAX_FILE_SIZE:
-                await callback.message.answer(t("too_big", user_id) + url)
-                return
+    try:
+        file_path = await safe_download(url, mode)
 
-            await callback.message.answer(t("success", user_id))
+        if not file_path or not os.path.exists(file_path):
+            raise RuntimeError("File not created")
 
-            if mode == "audio":
-                await callback.message.answer_audio(types.FSInputFile(file_path))
-            else:
-                await callback.message.answer_video(types.FSInputFile(file_path))
+        size = os.path.getsize(file_path)
 
-        except Exception as e:
-            log(f"[FINAL ERROR] {e}")
-            await callback.message.answer(t("error", user_id))
+        if size > MAX_FILE_SIZE:
+            await callback.message.answer(t("too_big", user_id) + url)
+            return
 
-        finally:
-            if 'file_path' in locals() and file_path and os.path.exists(file_path):
-                try:
-                    os.remove(file_path)
-                except Exception as e:
-                    log(f"[CLEANUP ERROR] {e}")
+        await callback.message.answer(t("success", user_id))
+
+        if mode == "audio":
+            await callback.message.answer_audio(types.FSInputFile(file_path))
+        else:
+            await callback.message.answer_video(types.FSInputFile(file_path))
+
+    except Exception as e:
+        log(f"[FINAL ERROR] {e}")
+        await callback.message.answer(t("error", user_id))
+
+    finally:
+        if 'file_path' in locals() and file_path and os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+            except Exception as e:
+                log(f"[CLEANUP ERROR] {e}")
