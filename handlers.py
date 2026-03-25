@@ -1,5 +1,6 @@
 import os
 import asyncio
+import re
 from aiogram import types, Dispatcher
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -16,6 +17,9 @@ user_requests = {}
 
 def t(key, user_id):
     return TEXTS[key][user_lang.get(user_id, "ru")]
+
+def sanitize_filename(name: str) -> str:
+    return re.sub(r'[\\/*?:"<>|]', "", name)
 
 def lang_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -93,7 +97,6 @@ async def process_download(callback, user_id, url, mode):
     try:
         result = await safe_download(url, mode)
 
-        # 🔥 поддержка старого и нового формата
         if isinstance(result, tuple):
             file_path, info = result
         else:
@@ -104,24 +107,34 @@ async def process_download(callback, user_id, url, mode):
             raise RuntimeError("File not created")
 
         size = os.path.getsize(file_path)
+        size_mb = round(size / (1024 * 1024), 2)
 
         if size > MAX_FILE_SIZE:
             await callback.message.answer(t("too_big", user_id) + url)
             return
 
-        title = info.get("title", "Unknown")
-        ext = info.get("ext", "")
+        title = sanitize_filename(info.get("title", "file"))
+        ext = info.get("ext", "mp4")
         abr = info.get("abr")
 
-        size_mb = round(size / (1024 * 1024), 2)
+        new_path = f"/tmp/{title}.{ext}"
 
-        info_text = f"📄 {title}\n"
-        info_text += f"📦 {ext.upper()} | {size_mb} MB"
+        try:
+            os.rename(file_path, new_path)
+            file_path = new_path
+        except Exception as e:
+            log(f"[RENAME ERROR] {e}")
+
+        # 🔥 текст с языком
+        result_text = t("file_info", user_id).format(
+            ext=ext.upper(),
+            size=size_mb
+        )
 
         if mode == "audio" and abr:
-            info_text += f" | {int(abr)} kbps"
+            result_text += f" | {int(abr)} kbps"
 
-        await callback.message.answer(t("success", user_id) + "\n\n" + info_text)
+        await callback.message.answer(t("success", user_id) + "\n\n" + result_text)
 
         if mode == "audio":
             await callback.message.answer_audio(types.FSInputFile(file_path))
