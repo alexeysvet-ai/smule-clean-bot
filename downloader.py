@@ -2,6 +2,7 @@ import time
 import yt_dlp
 
 from proxy import get, mark_ok, mark_fail, ban
+from config import DOWNLOAD_TIMEOUT
 import logger as log
 
 MAX = 10
@@ -13,42 +14,41 @@ def _formats(mode):
     return ["bestvideo+bestaudio/best", "best"]
 
 
-def _classify_error(e):
-    s = str(e).lower()
+def _opts(proxy, fmt):
+    return {
+        "format": fmt,
+        "proxy": proxy,
+        "quiet": True,
+        "socket_timeout": 10,
+        "outtmpl": "/tmp/%(title)s.%(ext)s",
+        "retries": 2,
+        "nocheckcertificate": True,
+        "geo_bypass": True,
+    }
 
+
+def _etype(e):
+    s = str(e).lower()
     if "timeout" in s:
         return "TIMEOUT"
     if "proxy" in s:
         return "PROXY"
     if "network" in s:
         return "NETWORK"
-
     return "YOUTUBE"
 
 
 def download_video(url, mode, user):
-    proxies = get()
-
-    # fallback — если прокси нет
-    if not proxies:
-        proxies = [None]
+    proxies = get() or [None]
 
     for i, p in enumerate(proxies[:MAX], 1):
         for fmt in _formats(mode):
             try:
                 log.try_p(user, i, MAX, p)
 
-                opts = {
-                    "format": fmt,
-                    "proxy": p,
-                    "quiet": True,
-                    "socket_timeout": 10,
-                    "outtmpl": "/tmp/%(title)s.%(ext)s",
-                }
-
                 t0 = time.time()
 
-                with yt_dlp.YoutubeDL(opts) as ydl:
+                with yt_dlp.YoutubeDL(_opts(p, fmt)) as ydl:
                     info = ydl.extract_info(url, download=True)
 
                 path = ydl.prepare_filename(info)
@@ -66,12 +66,12 @@ def download_video(url, mode, user):
 
             except Exception as e:
                 err = str(e)
-                etype = _classify_error(e)
+                et = _etype(e)
 
                 if p:
                     mark_fail(p)
                     ban(p, err)
 
-                log.error(user, p, etype, err)
+                log.error(user, p, et, err)
 
     raise Exception("All attempts failed")
