@@ -43,8 +43,12 @@ TEXTS = {
         "en": "✅ Done!"
     },
     "error": {
-        "ru": "😔 Не удалось скачать",
-        "en": "😔 Failed"
+    "ru": "😔 К сожалению, сейчас не удалось скачать видео.\n\n"
+          "Я попробовал несколько способов, но сервис временно блокирует загрузку.\n\n"
+          "Попробуй чуть позже 🙏",
+    "en": "😔 Failed to download.\n\n"
+          "I tried multiple methods, but the service is temporarily blocking requests.\n\n"
+          "Please try again later 🙏"
     }
 }
 
