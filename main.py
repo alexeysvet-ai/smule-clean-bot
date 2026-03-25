@@ -1,37 +1,28 @@
 from aiohttp import web
-from aiogram import Bot, Dispatcher, types
+from aiogram import Bot, Dispatcher
 
-from config import TOKEN, WEBHOOK_PATH, WEBHOOK_URL, PORT
-from handlers import register_handlers
-from utils import log
+from handlers import register
 
-if not TOKEN:
-    raise ValueError("TOKEN not set")
+BOT_TOKEN = "YOUR_TOKEN"
 
-bot = Bot(token=TOKEN)
+bot = Bot(BOT_TOKEN)
 dp = Dispatcher()
+register(dp)
 
-register_handlers(dp)
 
-async def handle_webhook(request):
-    try:
-        data = await request.json()
-        update = types.Update(**data)
-        await dp.feed_update(bot, update)
-    except Exception as e:
-        log(f"[WEBHOOK ERROR] {e}")
+async def webhook(req):
+    data = await req.json()
+    await dp.feed_update(bot, data)
+    return web.Response(text="ok")
+
+
+async def health(req):
     return web.Response(text="OK")
 
-async def on_startup(app):
-    if WEBHOOK_URL:
-        await bot.set_webhook(WEBHOOK_URL)
 
-def create_app():
-    app = web.Application()
-    app.router.add_post(WEBHOOK_PATH, handle_webhook)
-    app.router.add_get("/", lambda r: web.Response(text="OK"))
-    app.on_startup.append(on_startup)
-    return app
+app = web.Application()
+app.router.add_post("/webhook", webhook)
+app.router.add_get("/health", health)
 
 if __name__ == "__main__":
-    web.run_app(create_app(), host="0.0.0.0", port=PORT)
+    web.run_app(app, port=8000)
