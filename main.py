@@ -1,7 +1,7 @@
 import os
 from aiohttp import web
 from aiogram import Bot, Dispatcher
-from aiogram.types import ParseMode
+from aiogram.types import ParseMode  # исправленный импорт
 
 from handlers import register
 
