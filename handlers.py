@@ -20,6 +20,7 @@ semaphore = asyncio.Semaphore(1)
 user_lang = {}
 user_requests = {}
 last_update_ts = None
+process_start_ts = datetime.now(timezone.utc).timestamp()
 
 # ===================== HELPERS =====================
 
