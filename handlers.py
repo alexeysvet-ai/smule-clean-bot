@@ -245,8 +245,6 @@ async def process_download(callback, user_id, url, mode):
         if mode == "audio":
             if abr:
                 result_text += f" | {int(abr)} kbps"
-            else:
-                result_text += " | ~192 kbps"
 
         await callback.message.answer(
             t("success", user_id) + "\n\n" + result_text
