@@ -28,11 +28,11 @@ async def on_startup(app):
         
 async def health(req):
     return web.Response(text="OK")
-    
 def create_app():
     app = web.Application()
     app.router.add_post(WEBHOOK_PATH, handle_webhook)
-    app.router.add_get("/", lambda r: web.Response(text="OK"))
+    app.router.add_get("/", health)
+    app.router.add_get("/health", health)  # ← ДОБАВИТЬ ЭТУ СТРОКУ
     app.on_startup.append(on_startup)
     return app
 
