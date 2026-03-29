@@ -10,22 +10,26 @@ from utils import log
 
 def is_proxy_alive(proxy):
     try:
+        log(f"[HEALTHCHECK] proxy={proxy}")
+
         proxies = {
             "http": proxy,
             "https": proxy,
         }
 
         r = requests.get(
-            "https://www.youtube.com",
+            "https://www.youtube.com/generate_204",
             proxies=proxies,
-            timeout=3  # быстрый фильтр
+            timeout=3
         )
 
-        return r.status_code == 200
+        log(f"[HEALTHCHECK OK] proxy={proxy} status={r.status_code}")
 
-    except Exception:
+        return r.status_code in (200, 204)
+
+    except Exception as e:
+        log(f"[HEALTHCHECK FAIL] proxy={proxy} error={e}")
         return False
-
 
 def pick_candidate_proxies(proxies, limit=3):
     candidates = []
