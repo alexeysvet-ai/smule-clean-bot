@@ -24,7 +24,7 @@ async def handle_webhook(request):
 
 async def on_startup(app):
     if WEBHOOK_URL:
-        await bot.set_webhook(WEBHOOK_URL)
+        asyncio.create_task(bot.set_webhook(WEBHOOK_URL))
         
 async def health(req):
     return web.Response(text="OK")
