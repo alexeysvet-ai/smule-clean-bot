@@ -1,1 +1,10 @@
-brd-customer-hl_b5dcd896-zone-residential_proxy2:q7aaue5pxcim@brd.superproxy.io:33335
+http://gnktxrqy:munhcy6msboc@31.59.20.176:6754
+http://gnktxrqy:munhcy6msboc@23.95.150.145:6114
+http://gnktxrqy:munhcy6msboc@198.23.239.134:6540
+http://gnktxrqy:munhcy6msboc@45.38.107.97:6014
+http://gnktxrqy:munhcy6msboc@107.172.163.27:6543
+http://gnktxrqy:munhcy6msboc@198.105.121.200:6462
+http://gnktxrqy:munhcy6msboc@216.10.27.159:6837
+http://gnktxrqy:munhcy6msboc@142.111.67.146:5611
+http://gnktxrqy:munhcy6msboc@191.96.254.138:6185
+http://gnktxrqy:munhcy6msboc@31.58.9.4:6077
