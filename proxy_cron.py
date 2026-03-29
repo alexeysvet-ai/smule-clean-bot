@@ -10,8 +10,8 @@ from utils import log  # [ADD] единый логгер
 INPUT_FILE = "proxies.txt"
 TEMP_FILE = "proxies.tmp"
 
-MAX_GOOD_PROXIES = 5
-TIMEOUT = 3
+MAX_GOOD_PROXIES = 15
+TIMEOUT = 20
 
 
 # === LOG PREFIX ===
