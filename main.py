@@ -13,6 +13,28 @@ dp = Dispatcher()
 
 register_handlers(dp)
 
+is_refresh_running = False
+
+async def refresh_proxies(req):
+    global is_refresh_running
+
+    if is_refresh_running:
+        return web.Response(text="ALREADY RUNNING")
+
+    is_refresh_running = True
+
+    async def wrapper():
+        global is_refresh_running
+        try:
+            await asyncio.to_thread(run_proxy_refresh)
+        finally:
+            is_refresh_running = False
+
+    asyncio.create_task(wrapper())
+
+    return web.Response(text="REFRESH STARTED")
+
+
 async def handle_webhook(request):
     try:
         data = await request.json()
@@ -32,7 +54,8 @@ def create_app():
     app = web.Application()
     app.router.add_post(WEBHOOK_PATH, handle_webhook)
     app.router.add_get("/", health)
-    app.router.add_get("/health", health)  # ← ДОБАВИТЬ ЭТУ СТРОКУ
+    app.router.add_get("/health", health) 
+    app.router.add_get("/refresh-proxies", refresh_proxies)
     app.on_startup.append(on_startup)
     return app
 
