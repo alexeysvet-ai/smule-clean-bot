@@ -4,6 +4,7 @@ import asyncio
 from config import TOKEN, WEBHOOK_PATH, WEBHOOK_URL, PORT
 from handlers import register_handlers
 from utils import log
+from proxy_cron import run_proxy_refresh
 
 if not TOKEN:
     raise ValueError("TOKEN not set")
