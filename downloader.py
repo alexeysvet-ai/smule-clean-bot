@@ -31,17 +31,28 @@ def is_proxy_alive(proxy):
         log(f"[HEALTHCHECK FAIL] proxy={proxy} error={e}")
         return False
 
-def pick_candidate_proxies(proxies, limit=3):
-    candidates = []
+def is_proxy_alive(proxy, idx, total):
+    try:
+        log(f"[HEALTHCHECK {idx}/{total}] proxy={proxy}")
 
-    for proxy in proxies:
-        if proxy and is_proxy_alive(proxy):
-            candidates.append(proxy)
+        proxies = {
+            "http": proxy,
+            "https": proxy,
+        }
 
-        if len(candidates) >= limit:
-            break
+        r = requests.get(
+            "https://www.youtube.com",
+            proxies=proxies,
+            timeout=3
+        )
 
-    return candidates
+        log(f"[HEALTHCHECK OK {idx}/{total}] proxy={proxy} status={r.status_code}")
+
+        return r.status_code == 200
+
+    except Exception as e:
+        log(f"[HEALTHCHECK FAIL {idx}/{total}] proxy={proxy} error={e}")
+        return False
 
 
 def download_video(url, mode):
