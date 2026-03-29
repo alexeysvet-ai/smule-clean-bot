@@ -1,16 +1,31 @@
+# === FILE: downloader.py ===
+# === BUILD: 20260329-01-PROXY ===
+
 import uuid
 import yt_dlp
 import asyncio  # [ADD] требуется для create_task, если используется в проекте
-import requests  # [ADD]
+import requests
 import multiprocessing
 
 from proxy import get_active_proxies, record_success, record_fail, proxy_score, add_to_blacklist
 from utils import log
 
 
-def is_proxy_alive(proxy):
+# === NEW FUNCTION: multiprocessing worker ===
+def ytdlp_worker(q, url, ydl_opts):
     try:
-        log(f"[HEALTHCHECK] proxy={proxy}")
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            filename = ydl.prepare_filename(info)
+            q.put((filename, info, None))
+    except Exception as e:
+        q.put((None, None, str(e)))
+
+
+# === HEALTHCHECK FUNCTION (SINGLE SOURCE) ===
+def is_proxy_alive(proxy, idx, total):
+    try:
+        log(f"[HEALTHCHECK {idx}/{total}] proxy={proxy}")
 
         proxies = {
             "http": proxy,
@@ -23,45 +38,46 @@ def is_proxy_alive(proxy):
             timeout=3
         )
 
-        log(f"[HEALTHCHECK OK] proxy={proxy} status={r.status_code}")
-
-        return r.status_code in (200, 204)
-
-    except Exception as e:
-        log(f"[HEALTHCHECK FAIL] proxy={proxy} error={e}")
-        return False
-
-def is_proxy_alive(proxy, idx, total):
-    try:
-        log(f"[HEALTHCHECK {idx}/{total}] proxy={proxy}")
-
-        proxies = {
-            "http": proxy,
-            "https": proxy,
-        }
-
-        r = requests.get(
-            "https://www.youtube.com",
-            proxies=proxies,
-            timeout=3
-        )
-
         log(f"[HEALTHCHECK OK {idx}/{total}] proxy={proxy} status={r.status_code}")
 
-        return r.status_code == 200
+        return r.status_code in (200, 204)
 
     except Exception as e:
         log(f"[HEALTHCHECK FAIL {idx}/{total}] proxy={proxy} error={e}")
         return False
 
 
+# === SHORTLIST SELECTION ===
+def pick_candidate_proxies(proxies, limit=3):
+    candidates = []
+    total = len(proxies)
+
+    for i, proxy in enumerate(proxies, start=1):
+        if proxy and is_proxy_alive(proxy, i, total):
+            candidates.append(proxy)
+
+        if len(candidates) >= limit:
+            break
+
+    return candidates
+
+
+# === MAIN DOWNLOAD FUNCTION ===
 def download_video(url, mode):
     unique_id = uuid.uuid4().hex
-    proxies = get_active_proxies()
+
+    all_proxies = get_active_proxies()
 
     # === CHANGE START: shortlist ===
-    proxies = pick_candidate_proxies(proxies, limit=3)
-    log(f"[CANDIDATES] {proxies}")
+    candidates = pick_candidate_proxies(all_proxies, limit=3)
+
+    if not candidates:
+        log("[FALLBACK] no candidates from healthcheck → using raw proxies")
+        candidates = all_proxies[:3]
+
+    proxies = candidates
+
+    log(f"[CANDIDATES] count={len(proxies)} proxies={proxies}")
     # === CHANGE END ===
 
     if not proxies:
@@ -108,18 +124,13 @@ def download_video(url, mode):
             # === CHANGE START: multiprocessing timeout ===
             result_queue = multiprocessing.Queue()
 
-            def _worker(q):
-                try:
-                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                        info = ydl.extract_info(url, download=True)
-                        filename = ydl.prepare_filename(info)
-                        q.put((filename, info, None))
-                except Exception as e:
-                    q.put((None, None, str(e)))
+            p = multiprocessing.Process(
+                target=ytdlp_worker,
+                args=(result_queue, url, ydl_opts)
+            )
 
-            p = multiprocessing.Process(target=_worker, args=(result_queue,))
             p.start()
-            p.join(15)  # timeout на одну попытку
+            p.join(15)
 
             if p.is_alive():
                 p.terminate()
@@ -143,7 +154,7 @@ def download_video(url, mode):
             record_fail(proxy)
             log(f"[ERROR] proxy={proxy} score={proxy_score(proxy)} error={err}")
 
-            # [CHANGE] blacklist только для реальных proxy-ошибок
+            # === CHANGE: blacklist только для реальных proxy ошибок ===
             if proxy and (
                 "402" in err or
                 "Payment Required" in err or
@@ -153,7 +164,6 @@ def download_video(url, mode):
             ):
                 add_to_blacklist(proxy, err)
 
-            # [CHANGE] явный лог перехода к следующей попытке
             log(f"[RETRY NEXT] after proxy={proxy}")
 
             continue
