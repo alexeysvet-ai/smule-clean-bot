@@ -12,6 +12,7 @@ from config import DOWNLOAD_TIMEOUT
 
 from proxy import get_active_proxies, record_success, record_fail, proxy_score, add_to_blacklist
 from utils import log
+from queue import Empty
 
 
 # === NEW: proxy block detection (P0 FIX) ===
@@ -29,10 +30,24 @@ def is_proxy_block_error(err: str) -> bool:
 # === NEW FUNCTION: multiprocessing worker (KEEP) ===
 def ytdlp_worker(q, url, ydl_opts):
     try:
+def ytdlp_worker(q, url, ydl_opts):
+    try:
+        print("[WORKER] before YoutubeDL")
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            print("[WORKER] before extract_info")
             info = ydl.extract_info(url, download=True)
+            print("[WORKER] after extract_info")
+
             filename = ydl.prepare_filename(info)
+            print(f"[WORKER] prepared filename={filename}")
+
+            print("[WORKER] before q.put success")
             q.put((filename, info, None))
+            print("[WORKER] after q.put success")
+    except Exception as e:
+        print(f"[WORKER] exception before error q.put: {e}")
+        q.put((None, None, str(e)))
+        print("[WORKER] after q.put error")
     except Exception as e:
         q.put((None, None, str(e)))
 
