@@ -6,6 +6,7 @@ import yt_dlp
 import asyncio  # [KEEP]
 import multiprocessing
 from config import YOUTUBE_TEST_VIDEO_URL  # [ADD]
+from config import DOWNLOAD_TIMEOUT
 
 # === CHANGE: requests больше не нужен (удалён) ===
 
