@@ -30,8 +30,6 @@ def is_proxy_block_error(err: str) -> bool:
 # === NEW FUNCTION: multiprocessing worker (KEEP) ===
 def ytdlp_worker(q, url, ydl_opts):
     try:
-def ytdlp_worker(q, url, ydl_opts):
-    try:
         print("[WORKER] before YoutubeDL")
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             print("[WORKER] before extract_info")
@@ -48,9 +46,6 @@ def ytdlp_worker(q, url, ydl_opts):
         print(f"[WORKER] exception before error q.put: {e}")
         q.put((None, None, str(e)))
         print("[WORKER] after q.put error")
-    except Exception as e:
-        q.put((None, None, str(e)))
-
 
 # === CHANGE START: удалены healthcheck и shortlist полностью ===
 # удалено:
