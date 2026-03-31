@@ -102,7 +102,7 @@ def download_video(url, mode):
             )
 
             p.start()
-            p.join(15)
+            p.join(DOWNLOAD_TIMEOUT)
 
             if p.is_alive():
                 p.terminate()
