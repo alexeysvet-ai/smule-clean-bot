@@ -107,9 +107,16 @@ def download_video(url, mode):
             if p.is_alive():
                 p.terminate()
                 p.join()
-                raise TimeoutError("Proxy attempt timeout")
 
-            filename, info, err = result_queue.get()
+                try:
+                    filename, info, err = result_queue.get_nowait()
+                except Empty:
+                    raise TimeoutError("Proxy attempt timeout")
+            else:
+                try:
+                    filename, info, err = result_queue.get_nowait()
+                except Empty:
+                    raise Exception("Worker finished without result")
 
             if err:
                 raise Exception(err)
