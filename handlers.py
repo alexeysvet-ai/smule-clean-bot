@@ -102,7 +102,11 @@ def register_handlers(dp: Dispatcher):
     @dp.message(lambda message: message.text and not message.text.startswith("/"))
     async def handle_video(message: types.Message):
         user_id = message.from_user.id
-
+        if STAGE_MODE and message.from_user.id not in ALLOWED_USER_IDS:
+            await message.answer(
+                TEXTS["stage_restricted"]["ru"] + " / " + TEXTS["stage_restricted"]["en"]
+            )
+            return
         raw_text = (message.text or "").strip()
         url = extract_url(raw_text)
 
