@@ -110,23 +110,6 @@ def register_handlers(dp: Dispatcher):
                 TEXTS["stage_restricted"]["ru"] + " / " + TEXTS["stage_restricted"]["en"]
             )
             return
-
-        if message.forward_from_chat or message.sender_chat:
-            log("[DEBUG CHANNEL] forwarded message detected")
-
-            if message.forward_from_chat:
-                log(f"[DEBUG CHANNEL] FORWARDED CHAT ID: {message.forward_from_chat.id}")
-                log(f"[DEBUG CHANNEL] FORWARDED CHAT TYPE: {message.forward_from_chat.type}")
-                log(f"[DEBUG CHANNEL] FORWARDED CHAT TITLE: {message.forward_from_chat.title}")
-
-            if message.sender_chat:
-                log(f"[DEBUG CHANNEL] SENDER CHAT ID: {message.sender_chat.id}")
-                log(f"[DEBUG CHANNEL] SENDER CHAT TYPE: {message.sender_chat.type}")
-                log(f"[DEBUG CHANNEL] SENDER CHAT TITLE: {message.sender_chat.title}")
-
-            log(f"[DEBUG CHANNEL] CURRENT CHAT ID: {message.chat.id}")
-            return
-
         raw_text = (message.text or "").strip()
         url = extract_url(raw_text)
 
