@@ -4,7 +4,6 @@ from datetime import datetime
 TOKEN = os.getenv("TOKEN")
 BASE_URL = os.getenv("BASE_URL")
 PORT = int(os.getenv("PORT", 10000))
-
 BUILD_ID = datetime.utcnow().strftime("%Y%m%d-%H%M")
 
 WEBHOOK_PATH = "/webhook"
