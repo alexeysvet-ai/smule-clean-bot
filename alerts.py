@@ -6,6 +6,7 @@ from utils import log
 def build_download_fail_alert(user_id: int, url: str, mode: str, err: str) -> str:
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     env_name = "stage" if STAGE_MODE else "prod"
+    err1 = str(e).replace("ERROR: ", "").Replace("Error: ","")
 
     return (
         f"🚨 Download failed\n"
@@ -14,7 +15,7 @@ def build_download_fail_alert(user_id: int, url: str, mode: str, err: str) -> st
         f"user_id: {user_id}\n"
         f"mode: {mode}\n"
         f"url: {url}\n"
-        f"error: {err}"
+        f"error: {err1}"
     )
 
 async def send_alert(text: str):
