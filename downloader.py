@@ -23,7 +23,20 @@ def is_proxy_block_error(err: str) -> bool:
         "confirm you're not a bot" in err or
         "sign in to confirm" in err
     )
-
+def is_non_retryable_download_error(err: str) -> bool:
+    err = err.lower()
+    return (
+        "404" in err or
+        "not found" in err or
+        "video unavailable" in err or
+        "this video is unavailable" in err or
+        "private video" in err or
+        "members-only" in err or
+        "requested format is not available" in err or
+        "requested format not available" in err or
+        "unsupported url" in err or
+        "no video formats found" in err
+    )
 
 # === NEW FUNCTION: multiprocessing worker (KEEP) ===
 def ytdlp_worker(q, url, ydl_opts):
@@ -71,7 +84,7 @@ def download_video(url, mode):
         "144": "bestvideo[height<=144]+bestaudio/best",
         "audio": "bestaudio/best"
     }
-
+    last_error = None
     for idx, proxy in enumerate(proxies):
         try:
             log(f"[TRY {idx+1}/{len(proxies)}] proxy={proxy}")
@@ -165,9 +178,14 @@ def download_video(url, mode):
 
         except Exception as e:
             err = str(e)
+            last_error = err
 
             record_fail(proxy)
             log(f"[ERROR] proxy={proxy} score={proxy_score(proxy)} error={err}")
+
+            if is_non_retryable_download_error(err):
+                log(f"[STOP RETRY] non-retryable error on proxy={proxy}: {err}")
+                raise Exception(err)
 
             # === CHANGE: extended blacklist (P0 FIX) ===
             if proxy and (
@@ -218,6 +236,7 @@ def download_video(url, mode):
         return filename, info
 
     except Exception as e:
+        last_error = str(e)
         log(f"[FALLBACK ERROR] {e}")
 
-    raise Exception("All attempts failed")
+    raise Exception(f"All attempts failed: {last_error or 'unknown error'}")
