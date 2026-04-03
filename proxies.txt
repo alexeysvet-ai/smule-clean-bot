@@ -12,5 +12,5 @@ http://gnktxrqy:munhcy6msboc@62.164.246.54:7779
 http://gnktxrqy:munhcy6msboc@31.98.7.140:6318
 http://gnktxrqy:munhcy6msboc@198.145.103.225:6482
 http://gnktxrqy:munhcy6msboc@193.160.83.17:6338
-http://gnktxrqy:munhcy6msboc@9.142.36.43:5714:
-http://gnktxrqy:munhcy6msboc@138.226.65.82:7273:
+http://gnktxrqy:munhcy6msboc@9.142.36.43:5714
+http://gnktxrqy:munhcy6msboc@138.226.65.82:7273
