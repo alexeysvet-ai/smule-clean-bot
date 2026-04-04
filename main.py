@@ -48,6 +48,12 @@ async def handle_webhook(request):
 async def on_startup(app):
     if WEBHOOK_URL:
         asyncio.create_task(bot.set_webhook(WEBHOOK_URL))
+    # TEST DB CONNECTION
+    try:
+        ok = test_connection()
+        print("DB CONNECTION:", ok)
+    except Exception as e:
+        print("DB CONNECTION ERROR:", e)
         
 async def health(req):
     return web.Response(text="OK")
