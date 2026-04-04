@@ -28,8 +28,8 @@ def is_non_retryable_download_error(err: str) -> bool:
     return (
         "404" in err or
         "not found" in err or
-        "video unavailable" in err or
-        "this video is unavailable" in err or
+  #      "video unavailable" in err or
+  #      "this video is unavailable" in err or
         "private video" in err or
         "members-only" in err or
         "requested format is not available" in err or
