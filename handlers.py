@@ -10,13 +10,12 @@ from aiogram import types, Dispatcher
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-from config import DOWNLOAD_TIMEOUT, MAX_FILE_SIZE, STAGE_MODE, ALLOWED_USER_IDS, BOT_CODE
+from config import MAX_FILE_SIZE, STAGE_MODE, ALLOWED_USER_IDS, BOT_CODE
 from downloader import download_video
 from utils import log
 from texts import TEXTS
-from datetime import datetime, timezone
 from alerts import send_alert, build_download_fail_alert
-from bot_core.db import insert_bot_entry
+from bot_core.db import insert_bot_entry, get_user_lang, set_user_lang, insert_bot_event
 
 semaphore = asyncio.Semaphore(1)
 
@@ -34,7 +33,18 @@ def detect_sleep(now_ts: float, process_start_ts: float) -> bool:
     # === CHANGE END ===
 
 def t(key, user_id):
-    return TEXTS[key][user_lang.get(user_id, "ru")]
+    lang = user_lang.get(user_id)
+
+    if not lang:
+        try:
+            lang = get_user_lang(BOT_CODE, user_id)
+            if lang:
+                user_lang[user_id] = lang
+                log(f"[DB LANG LOAD OK] bot_code={BOT_CODE} user_id={user_id} lang={lang}")
+        except Exception as e:
+            log(f"[DB LANG LOAD ERROR] bot_code={BOT_CODE} user_id={user_id} error={e}")
+
+    return TEXTS[key][lang or "ru"]
 
 def sanitize_filename(name: str) -> str:
     return re.sub(r'[\\/*?:"<>|]', "", name)
@@ -104,10 +114,17 @@ def register_handlers(dp: Dispatcher):
             reply_markup=lang_keyboard()
         )
 
-
     @dp.callback_query(lambda c: c.data.startswith("lang_"))
     async def set_lang(callback: types.CallbackQuery):
-        user_lang[callback.from_user.id] = callback.data.split("_")[1]
+        lang = callback.data.split("_")[1]
+        user_lang[callback.from_user.id] = lang
+        
+        try:
+            set_user_lang(BOT_CODE, callback.from_user.id, lang)
+            log(f"[DB LANG SAVE OK] bot_code={BOT_CODE} user_id={callback.from_user.id} lang={lang}")
+        except Exception as e:
+            log(f"[DB LANG SAVE ERROR] bot_code={BOT_CODE} user_id={callback.from_user.id} lang={lang} error={e}")
+
         await callback.message.edit_text(t("welcome", callback.from_user.id))
 
     @dp.message(lambda message: message.text and not message.text.startswith("/"))
@@ -122,6 +139,16 @@ def register_handlers(dp: Dispatcher):
         url = extract_url(raw_text)
 
         if not url:
+            try:
+                insert_bot_event(
+                    BOT_CODE,
+                    user_id,
+                    "url_received_invalid",
+                    status="fail"
+                )
+            except Exception as e:
+                log(f"[DB EVENT ERROR] bot_code={BOT_CODE} user_id={user_id} event_type=url_received_invalid error={e}")
+
             await message.answer(t("invalid_url", user_id))
             return
 
@@ -134,6 +161,16 @@ def register_handlers(dp: Dispatcher):
         if lag_sec > 10:
             await message.answer(t("lag_long", user_id))
         # === CHANGE END ===
+
+        try:
+            insert_bot_event(
+                BOT_CODE,
+                user_id,
+                "url_received_valid",
+                status="success"
+            )
+        except Exception as e:
+            log(f"[DB EVENT ERROR] bot_code={BOT_CODE} user_id={user_id} event_type=url_received_valid error={e}")
 
         user_requests[user_id] = url
 
@@ -154,6 +191,17 @@ def register_handlers(dp: Dispatcher):
 
         await callback.answer()
 
+        try:
+            insert_bot_event(
+                BOT_CODE,
+                user_id,
+                "download_mode_selected",
+                status="success",
+                mode=mode
+            )
+        except Exception as e:
+            log(f"[DB EVENT ERROR] bot_code={BOT_CODE} user_id={user_id} event_type=download_mode_selected mode={mode} error={e}")
+
         # === CHANGE START ===
         now = datetime.now(timezone.utc)
         msg_time = callback.message.date if callback.message else now
@@ -170,6 +218,17 @@ def register_handlers(dp: Dispatcher):
 # ===================== PROCESS =====================
 
 async def process_download(callback, user_id, url, mode):
+    try:
+        insert_bot_event(
+            BOT_CODE,
+            user_id,
+            "download_started",
+            status="success",
+            mode=mode
+        )
+    except Exception as e:
+        log(f"[DB EVENT ERROR] bot_code={BOT_CODE} user_id={user_id} event_type=download_started mode={mode} error={e}")
+
     await callback.message.answer(t("start", user_id))
 
     await callback.message.answer(t("status_1", user_id))
@@ -200,6 +259,18 @@ async def process_download(callback, user_id, url, mode):
         size_mb = round(size / (1024 * 1024), 2)
 
         if size > MAX_FILE_SIZE:
+            try:
+                insert_bot_event(
+                    BOT_CODE,
+                    user_id,
+                    "download_rejected_too_big",
+                    status="rejected",
+                    mode=mode,
+                    file_size_bytes=size
+                )
+            except Exception as e:
+                log(f"[DB EVENT ERROR] bot_code={BOT_CODE} user_id={user_id} event_type=download_rejected_too_big mode={mode} error={e}")
+
             await callback.message.answer(t("too_big", user_id) + url)
             return
 
@@ -245,8 +316,33 @@ async def process_download(callback, user_id, url, mode):
                 caption=final_caption
             )
 
+        try:
+            insert_bot_event(
+                BOT_CODE,
+                user_id,
+                "download_success",
+                status="success",
+                mode=mode,
+                file_size_bytes=size
+            )
+        except Exception as e:
+            log(f"[DB EVENT ERROR] bot_code={BOT_CODE} user_id={user_id} event_type=download_success mode={mode} error={e}")
+
     except Exception as e:
         log(f"[FINAL ERROR] {e}")
+
+        try:
+            insert_bot_event(
+                BOT_CODE,
+                user_id,
+                "download_failed",
+                status="fail",
+                mode=mode,
+                error_text_short=str(e)[:500]
+            )
+        except Exception as db_error:
+            log(f"[DB EVENT ERROR] bot_code={BOT_CODE} user_id={user_id} event_type=download_failed mode={mode} error={db_error}")
+
         await callback.message.answer(t("error", user_id))
         alert_text = build_download_fail_alert(user_id, url, mode, str(e))
         await send_alert(alert_text)
