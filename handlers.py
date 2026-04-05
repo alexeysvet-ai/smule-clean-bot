@@ -16,7 +16,7 @@ from utils import log
 from texts import TEXTS
 from datetime import datetime, timezone
 from alerts import send_alert, build_download_fail_alert
-from bot_core.db import insert_bot_entry
+from bot_core.db import insert_bot_entry, get_user_lang, set_user_lang
 
 semaphore = asyncio.Semaphore(1)
 
@@ -34,7 +34,18 @@ def detect_sleep(now_ts: float, process_start_ts: float) -> bool:
     # === CHANGE END ===
 
 def t(key, user_id):
-    return TEXTS[key][user_lang.get(user_id, "ru")]
+    lang = user_lang.get(user_id)
+
+    if not lang:
+        try:
+            lang = get_user_lang(BOT_CODE, user_id)
+            if lang:
+                user_lang[user_id] = lang
+                log(f"[DB LANG LOAD OK] bot_code={BOT_CODE} user_id={user_id} lang={lang}")
+        except Exception as e:
+            log(f"[DB LANG LOAD ERROR] bot_code={BOT_CODE} user_id={user_id} error={e}")
+
+    return TEXTS[key][lang or "ru"]
 
 def sanitize_filename(name: str) -> str:
     return re.sub(r'[\\/*?:"<>|]', "", name)
@@ -109,6 +120,19 @@ def register_handlers(dp: Dispatcher):
     async def set_lang(callback: types.CallbackQuery):
         user_lang[callback.from_user.id] = callback.data.split("_")[1]
         await callback.message.edit_text(t("welcome", callback.from_user.id))
+
+    @dp.callback_query(lambda c: c.data.startswith("lang_"))
+    async def set_lang(callback: types.CallbackQuery):
+        lang = callback.data.split("_")[1]
+        user_lang[callback.from_user.id] = lang
+        
+        try:
+            set_user_lang(BOT_CODE, callback.from_user.id, lang)
+            log(f"[DB LANG SAVE OK] bot_code={BOT_CODE} user_id={callback.from_user.id} lang={lang}")
+        except Exception as e:
+            log(f"[DB LANG SAVE ERROR] bot_code={BOT_CODE} user_id={callback.from_user.id} lang={lang} error={e}")
+
+    await callback.message.edit_text(t("welcome", callback.from_user.id))
 
     @dp.message(lambda message: message.text and not message.text.startswith("/"))
     async def handle_video(message: types.Message):

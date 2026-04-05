@@ -1,15 +1,11 @@
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 
 TOKEN = os.getenv("TOKEN")
 BASE_URL = os.getenv("BASE_URL")
 PORT = int(os.getenv("PORT", 10000))
 BOT_CODE = os.getenv("BOT_CODE")
-if not BOT_CODE:
-    raise RuntimeError("BOT_CODE is not set")
-
-BUILD_ID = datetime.utcnow().strftime("%Y%m%d-%H%M")
-
+BUILD_ID = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M")
 WEBHOOK_PATH = "/webhook"
 WEBHOOK_URL = f"{BASE_URL}{WEBHOOK_PATH}" if BASE_URL else None
 
