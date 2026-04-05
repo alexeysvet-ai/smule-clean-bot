@@ -64,11 +64,10 @@ TEXTS = {
     # --- Видео слишком большое ---
     "too_big": {
         "ru": "⚠️ Видео слишком большое (>50MB)\n\n"
-              "Это ограничение Telegram\n\n"
-              "Ссылка:\n",
-        "en": "⚠️ File too large (>50MB)\n\n"
-              "Telegram limitation\n\n"
-              "Link:\n"
+              "Это ограничение Telegram",
+
+        "en": "⚠️ File too big (>50MB)\n\n"
+              "Telegram limitation"
     },
 
     # --- Ошибка ---
