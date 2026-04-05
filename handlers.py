@@ -126,7 +126,7 @@ def register_handlers(dp: Dispatcher):
         except Exception as e:
             log(f"[DB LANG SAVE ERROR] bot_code={BOT_CODE} user_id={callback.from_user.id} lang={lang} error={e}")
 
-    await callback.message.edit_text(t("welcome", callback.from_user.id))
+        await callback.message.edit_text(t("welcome", callback.from_user.id))
 
     @dp.message(lambda message: message.text and not message.text.startswith("/"))
     async def handle_video(message: types.Message):
