@@ -16,7 +16,7 @@ from bot_core.db import insert_bot_entry, get_user_lang, set_user_lang, insert_b
 from bot_helpers import sanitize_filename, safe_title, extract_url
 from download_flow import process_download
 
-semaphore = asyncio.Semaphore(1)
+download_semaphore = asyncio.Semaphore(1)
 
 user_lang = {}
 user_requests = {}
@@ -55,7 +55,7 @@ def lang_keyboard():
 
 # ===================== DOWNLOAD =====================
 
-async def safe_download(url, mode):
+async def safe_download(url, mode, semaphore):
     async with semaphore:
         return await asyncio.to_thread(download_video, url, mode)
 
@@ -184,6 +184,6 @@ def register_handlers(dp: Dispatcher):
             await callback.message.answer(t("lag_long", user_id))
         # === CHANGE END ===
 
-        asyncio.create_task(process_download(callback, user_id, url, mode, t, safe_download))
+        asyncio.create_task(process_download(callback, user_id, url, mode, t, safe_download, download_semaphore, user_requests))
 
 

@@ -9,9 +9,9 @@ from bot_core.db import insert_bot_event
 from bot_helpers import safe_title
 
 # ===================== PROCESS =====================
-# ===================== PROCESS =====================
 
-async def process_download(callback, user_id, url, mode, t, safe_download):
+async def process_download(callback, user_id, url, mode, t, safe_download, semaphore, user_requests):
+
     try:
         insert_bot_event(
             BOT_CODE,
@@ -20,7 +20,7 @@ async def process_download(callback, user_id, url, mode, t, safe_download):
             status="success",
             mode=mode
         )
-    except Exception as e:
+ception as e:
         log(f"[DB EVENT ERROR] bot_code={BOT_CODE} user_id={user_id} event_type=download_started mode={mode} error={e}")
 
     await callback.message.answer(t("start", user_id))
@@ -38,7 +38,7 @@ async def process_download(callback, user_id, url, mode, t, safe_download):
     file_path = None
 
     try:
-        result = await safe_download(url, mode)
+        result = await safe_download(url, mode, semaphore)
 
         if isinstance(result, tuple):
             file_path, info = result
