@@ -3,49 +3,21 @@
 
 import asyncio
 from datetime import datetime, timezone
+from bot_state import download_semaphore, user_requests, last_update_ts, process_start_ts
 from aiogram import types, Dispatcher
 from aiogram.filters import Command
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from bot_ui import quality_keyboard
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from config import STAGE_MODE, ALLOWED_USER_IDS, BOT_CODE
 from downloader import download_video
 from utils import log
 from texts import TEXTS
 from alerts import send_alert, build_download_fail_alert
-from bot_core.db import insert_bot_entry, get_user_lang, set_user_lang, insert_bot_event
+from bot_core.db import insert_bot_entry, set_user_lang, insert_bot_event
+from bot_i18n import t, user_lang
 from bot_helpers import sanitize_filename, safe_title, extract_url
 from download_flow import process_download
+from bot_ui import quality_keyboard
 
-download_semaphore = asyncio.Semaphore(1)
-
-user_lang = {}
-user_requests = {}
-last_update_ts = None
-process_start_ts = datetime.now(timezone.utc).timestamp()
-
-# ===================== HELPERS =====================
-# --- LAG DETECTION HELPER (20260326 UX SAFE) ---
-def detect_sleep(now_ts: float, process_start_ts: float) -> bool:
-    # === CHANGE START ===
-    # больше не используется — логика перенесена в message.date
-    return False
-    # === CHANGE END ===
-
-def t(key, user_id):
-    lang = user_lang.get(user_id)
-
-    if not lang:
-        try:
-            lang = get_user_lang(BOT_CODE, user_id)
-            if lang:
-                user_lang[user_id] = lang
-                log(f"[DB LANG LOAD OK] bot_code={BOT_CODE} user_id={user_id} lang={lang}")
-        except Exception as e:
-            log(f"[DB LANG LOAD ERROR] bot_code={BOT_CODE} user_id={user_id} error={e}")
-
-    return TEXTS[key][lang or "ru"]
-
-# ===================== UI =====================
 
 def lang_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -65,8 +37,8 @@ def register_handlers(dp: Dispatcher):
 
     @dp.message(Command("start"))
     async def start(message: types.Message):
-        global last_update_ts
-        last_update_ts = datetime.now(timezone.utc).timestamp()
+        import bot_state
+        bot_state.last_update_ts = datetime.now(timezone.utc).timestamp()
         log(f"[USER START] id={message.from_user.id}")
 
         try:
