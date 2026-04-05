@@ -1,7 +1,7 @@
 from config import BOT_CODE
 from utils import log
 from texts import TEXTS
-from bot_core.db import get_user_lang
+from bot_core.user_settings import get_user_lang
 
 user_lang = {}
 
