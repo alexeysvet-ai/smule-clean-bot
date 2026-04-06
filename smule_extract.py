@@ -83,16 +83,31 @@ def extract_smule_media_info(url: str) -> dict:
         )
         log(f"[SMULE EXTRACT BODY PREVIEW] url={url} body_preview={body_preview}")
 
-        if response.status_code != 200:
+        if response.status_code not in (200, 403):
             result["reason"] = f"http_status:{response.status_code}"
             log(f"[SMULE EXTRACT FAIL] url={url} reason={result['reason']}")
             return result
+
+        if response.status_code == 403:
+            log(
+                f"[SMULE EXTRACT INFO] url={url} "
+                f"status=403 but trying to parse HTML anyway"
+            )
 
         datastore_match = re.search(
             r"window\.DataStore\s*=\s*(\{.*?\})\s*;\s*</script>",
             body,
             re.DOTALL,
         )
+
+        if not datastore_match:
+            log(f"[SMULE EXTRACT INFO] url={url} primary regex failed, trying fallback")
+
+            datastore_match = re.search(
+                r"window\.DataStore\s*=\s*(\{.*\})\s*;\s*",
+                body,
+                re.DOTALL,
+            )
 
         if not datastore_match:
             result["reason"] = "datastore_not_found"
@@ -150,6 +165,12 @@ def extract_smule_media_info(url: str) -> dict:
             f"video_media_url={'yes' if result['video_media_url'] else 'no'} "
             f"video_media_mp4_url={'yes' if result['video_media_mp4_url'] else 'no'} "
             f"cover_url={'yes' if result['cover_url'] else 'no'}"
+        )
+        log(
+            f"[SMULE EXTRACT RAW MEDIA] "
+            f"media_url={result['media_url']} "
+            f"video_media_url={result['video_media_url']} "
+            f"video_media_mp4_url={result['video_media_mp4_url']}"
         )
 
         # --- is_video ---
