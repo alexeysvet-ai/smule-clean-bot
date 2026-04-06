@@ -5,7 +5,7 @@ import requests
 import os
 import time
 
-from utils import log  # [ADD] единый логгер
+from bot_core.utils import log  # [ADD] единый логгер
 
 INPUT_FILE = "proxies.txt"
 TEMP_FILE = "proxies.tmp"
