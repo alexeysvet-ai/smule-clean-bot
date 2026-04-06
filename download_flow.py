@@ -3,10 +3,11 @@ import asyncio
 from aiogram import types
 
 from config import BOT_CODE
-from utils import log
-from alerts import send_alert, build_download_fail_alert
-from bot_core.db import insert_bot_event
-from bot_helpers import safe_title
+from config import TOKEN, ALERT_CHANNEL_ID 
+from bot_core.utils import log
+from bot_core.alerts import send_alert, build_download_fail_alert
+from bot_core.events import insert_bot_event
+from bot_core.bot_helpers import safe_title
 
 # ===================== PROCESS =====================
 
@@ -137,8 +138,8 @@ async def process_download(callback, user_id, url, mode, t, safe_download, semap
             log(f"[DB EVENT ERROR] bot_code={BOT_CODE} user_id={user_id} event_type=download_failed mode={mode} error={db_error}")
 
         await callback.message.answer(t("error", user_id))
-        alert_text = build_download_fail_alert(user_id, url, mode, str(e))
-        await send_alert(alert_text)
+        alert_text = build_download_fail_alert(BOT_CODE, user_id, url, mode, str(e))
+        await send_alert(TOKEN, ALERT_CHANNEL_ID, alert_text)
 
 
     finally:

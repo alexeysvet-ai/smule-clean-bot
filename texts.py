@@ -110,5 +110,9 @@ TEXTS = {
 "stage_restricted": {
     "ru": "⚙️ Этот бот предназначен для технических целей и доступ к нему ограничен.",
     "en": "⚙️ This bot is intended for technical purposes and access is restricted."
+},
+"access_denied": {
+    "ru": "⛔ У вас нет доступа к этому боту",
+    "en": "⛔ You do not have access to this bot"
 }
 }
