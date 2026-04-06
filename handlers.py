@@ -104,8 +104,11 @@ def register_handlers(dp: Dispatcher):
             f"ok={check['ok']} is_video={check['is_video']} reason={check['reason']}"
         )
         if not check["ok"]:
-            await message.answer("не OK")
+            await message.answer(f"не OK: {check['reason']}")
             return
+
+        await message.answer(f"OK: is_video={check['is_video']} reason={check['reason']}")
+        return
 
         await message.answer("OK")
         return
