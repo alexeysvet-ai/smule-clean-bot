@@ -3,14 +3,13 @@ from datetime import datetime, timezone
 from config import STAGE_MODE
 from utils import log
 
-def build_download_fail_alert(user_id: int, url: str, mode: str, err: str) -> str:
+def build_download_fail_alert(bot_code: str, user_id: int, url: str, mode: str, err: str) -> str:
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-    env_name = "stage" if STAGE_MODE else "prod"
     err1 = str(err).replace("ERROR: ", "").replace("Error: ","")
 
     return (
         f"🚨 Download failed\n"
-        f"env: {env_name}\n"
+        f"bot: {bot_code}\n"
         f"time: {now}\n"
         f"user_id: {user_id}\n"
         f"mode: {mode}\n"

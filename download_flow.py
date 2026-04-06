@@ -138,7 +138,7 @@ async def process_download(callback, user_id, url, mode, t, safe_download, semap
             log(f"[DB EVENT ERROR] bot_code={BOT_CODE} user_id={user_id} event_type=download_failed mode={mode} error={db_error}")
 
         await callback.message.answer(t("error", user_id))
-        alert_text = build_download_fail_alert(user_id, url, mode, str(e))
+        alert_text = build_download_fail_alert(BOT_CODE, user_id, url, mode, str(e))
         await send_alert(TOKEN, ALERT_CHANNEL_ID, alert_text)
 
 
