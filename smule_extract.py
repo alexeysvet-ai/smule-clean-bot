@@ -3,6 +3,7 @@ import re
 import requests
 from urllib.parse import urlparse
 from bot_core.utils import log
+from proxy import get_active_proxies
 
 
 def extract_smule_media_info(url: str) -> dict:
@@ -67,12 +68,46 @@ def extract_smule_media_info(url: str) -> dict:
         # первый прогрев (как браузер)
         session.get("https://www.smule.com/", headers=headers, timeout=10)
         
-        response = requests.session.get(
-            url,
-            headers=headers,
-            timeout=20,
-            allow_redirects=True,
-        )
+        proxies_list = get_active_proxies()
+        log(f"[SMULE PROXIES] loaded={len(proxies_list)}")
+
+        last_error = None
+        response = None
+
+        for idx, proxy in enumerate(proxies_list):
+            try:
+                log(f"[SMULE TRY {idx+1}/{len(proxies_list)}] proxy={proxy}")
+
+                response = requests.get(
+                    url,
+                    headers=headers,
+                    timeout=20,
+                    allow_redirects=True,
+                    proxies={
+                        "http": proxy,
+                        "https": proxy,
+                    }
+                )
+
+                log(f"[SMULE PROXY SUCCESS] proxy={proxy} status={response.status_code}")
+                break
+
+            except Exception as e:
+                last_error = str(e)
+                log(f"[SMULE PROXY ERROR] proxy={proxy} error={last_error}")
+                continue
+
+        if response is None:
+            log("[SMULE FALLBACK] trying without proxy")
+
+            response = requests.get(
+                url,
+                headers=headers,
+                timeout=20,
+                allow_redirects=True,
+            )
+
+            log(f"[SMULE FALLBACK RESULT] status={response.status_code}")
 
         final_url = response.url
         final_host = (urlparse(final_url).netloc or "").lower()
@@ -83,7 +118,7 @@ def extract_smule_media_info(url: str) -> dict:
             f.write(body)
 
         log("[SMULE EXTRACT DEBUG] saved_html=/tmp/smule_debug.html")
-        log(f"[SMULE EXTRACT DEBUG] body_first_500={body[:500]}")
+#        log(f"[SMULE EXTRACT DEBUG] body_first_500={body[:500]}")
 
         log(
             f"[SMULE EXTRACT HTTP] "
@@ -91,7 +126,7 @@ def extract_smule_media_info(url: str) -> dict:
             f"final_url={final_url} final_host={final_host} "
             f"content_type={content_type}"
         )
-        log(f"[SMULE EXTRACT BODY PREVIEW] url={url} body_preview={body_preview}")
+ #       log(f"[SMULE EXTRACT BODY PREVIEW] url={url} body_preview={body_preview}")
 
         if response.status_code not in (200, 403):
             result["reason"] = f"http_status:{response.status_code}"
