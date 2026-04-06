@@ -89,8 +89,13 @@ def extract_smule_media_info(url: str) -> dict:
                     }
                 )
 
-                log(f"[SMULE PROXY SUCCESS] proxy={proxy} status={response.status_code}")
-                break
+                if response.status_code == 200:
+                    log(f"[SMULE PROXY SUCCESS] proxy={proxy} status={response.status_code}")
+                    break
+
+                log(f"[SMULE PROXY BAD STATUS] proxy={proxy} status={response.status_code}")
+                response = None
+                continue
 
             except Exception as e:
                 last_error = str(e)
@@ -114,11 +119,7 @@ def extract_smule_media_info(url: str) -> dict:
         content_type = response.headers.get("Content-Type", "")
         body = response.text or ""
         body_preview = body[:500].replace("\n", " ").replace("\r", " ")
-        with open("/tmp/smule_debug.html", "w", encoding="utf-8") as f:
-            f.write(body)
 
-        log("[SMULE EXTRACT DEBUG] saved_html=/tmp/smule_debug.html")
-#        log(f"[SMULE EXTRACT DEBUG] body_first_500={body[:500]}")
 
         log(
             f"[SMULE EXTRACT HTTP] "
@@ -126,7 +127,6 @@ def extract_smule_media_info(url: str) -> dict:
             f"final_url={final_url} final_host={final_host} "
             f"content_type={content_type}"
         )
- #       log(f"[SMULE EXTRACT BODY PREVIEW] url={url} body_preview={body_preview}")
 
         if response.status_code not in (200, 403):
             result["reason"] = f"http_status:{response.status_code}"
@@ -138,12 +138,6 @@ def extract_smule_media_info(url: str) -> dict:
                 f"[SMULE EXTRACT INFO] url={url} "
                 f"status=403 but trying to parse HTML anyway"
             )
-
-        log(f"[SMULE EXTRACT BODY HAS WINDOW.DATASTORE] found={'window.DataStore' in body}")
-        log(f"[SMULE EXTRACT COOKIES] {session.cookies.get_dict()}")
-        log(f"[SMULE EXTRACT BODY HAS PERFORMANCE] found={'performance' in body}")
-        log(f"[SMULE EXTRACT BODY HAS Pages] found={'Pages' in body}")
-        log(f"[SMULE EXTRACT BODY LEN] len={len(body)}")
 
         datastore_match = re.search(
             r"window\.DataStore\s*=\s*(\{.*?\})\s*;",
@@ -163,7 +157,6 @@ def extract_smule_media_info(url: str) -> dict:
         if not datastore_match:
             result["reason"] = "datastore_not_found"
             log(f"[SMULE EXTRACT FAIL] url={url} reason={result['reason']}")
-            log(f"[SMULE EXTRACT BODY PREVIEW 2000] {body[:2000]}")
             return result
 
         datastore_raw = datastore_match.group(1)
