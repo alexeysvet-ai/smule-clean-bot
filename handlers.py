@@ -19,6 +19,7 @@ from bot_core.bot_helpers import sanitize_filename, safe_title, extract_url
 from download_flow import process_download
 from bot_ui import quality_keyboard
 from smule_check import inspect_smule_url
+from smule_extract import extract_smule_media_info
 
 
 
@@ -103,56 +104,40 @@ def register_handlers(dp: Dispatcher):
             f"[SMULE CHECK RESULT] user_id={user_id} url={url} "
             f"ok={check['ok']} is_video={check['is_video']} reason={check['reason']}"
         )
-        if not check["ok"]:
+        extract = None
+        if check["ok"]:
+            extract = extract_smule_media_info(url)
+            log(
+                f"[SMULE EXTRACT RESULT] user_id={user_id} url={url} "
+                f"ok={extract['ok']} is_video={extract['is_video']} "
+                f"is_processing={extract['is_processing']} reason={extract['reason']}"
+            )
+        else:
             await message.answer(
                 f"не OK\n"
                 f"reason={check['reason']}\n"
                 f"path_type={check.get('path_type')}\n"
-                f"http_status={check.get('http_status')}\n"
-                f"is_video={check.get('is_video')}\n"
-                f"is_processing={check.get('is_processing')}"
+                f"http_status={check.get('http_status')}"
+            )
+            return
+
+        if not extract or not extract["ok"]:
+            await message.answer(
+                f"OK CHECK / EXTRACT FAIL\n"
+                f"check_reason={check['reason']}\n"
+                f"extract_reason={extract['reason'] if extract else 'no_extract'}"
             )
             return
 
         await message.answer(
             f"OK\n"
-            f"reason={check['reason']}\n"
-            f"path_type={check.get('path_type')}\n"
-            f"http_status={check.get('http_status')}\n"
-            f"is_video={check.get('is_video')}\n"
-            f"is_processing={check.get('is_processing')}"
+            f"type={extract['perf_type']}\n"
+            f"is_video={extract['is_video']}\n"
+            f"is_processing={extract['is_processing']}\n"
+            f"status={extract['perf_status']}\n"
+            f"title={extract['title']}"
         )
         return
-
-        await message.answer("OK")
-        return
-
-        # === CHANGE START ===
-        now = datetime.now(timezone.utc)
-        msg_time = message.date
-
-        lag_sec = (now - msg_time).total_seconds()
-
-        if lag_sec > 10:
-            await message.answer(t("lag_long", user_id))
-        # === CHANGE END ===
-
-        try:
-            insert_bot_event(
-                BOT_CODE,
-                user_id,
-                "url_received_valid",
-                status="success"
-            )
-        except Exception as e:
-            log(f"[DB EVENT ERROR] bot_code={BOT_CODE} user_id={user_id} event_type=url_received_valid error={e}")
-
-        user_requests[user_id] = url
-
-        await message.answer(
-            t("choose_format", user_id),
-            reply_markup=quality_keyboard()
-        )
 
     @dp.callback_query(lambda c: c.data.startswith("q_"))
     async def handle_quality(callback: types.CallbackQuery):
