@@ -1,9 +1,5 @@
-import json
-import re
-import requests
-from urllib.parse import urlparse
+from playwright.sync_api import sync_playwright
 from bot_core.utils import log
-from proxy import get_active_proxies
 
 
 def extract_smule_media_info(url: str) -> dict:
@@ -16,261 +12,101 @@ def extract_smule_media_info(url: str) -> dict:
         "video_url": None,
         "title": None,
         "artist": None,
-        "cover_url": None,
-        "author": None,
-        "media_url": None,
-        "video_media_url": None,
-        "video_media_mp4_url": None,
         "perf_status": None,
         "perf_type": None,
-        "private": None,
-        "raw": None,
     }
 
     try:
-        log(f"[SMULE EXTRACT START] url={url}")
+        log(f"[SMULE PW START] url={url}")
 
-        parsed = urlparse(url)
-        host = (parsed.netloc or "").lower()
-        path = parsed.path or ""
-        query = parsed.query or ""
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page()
+            media_urls = set()
 
-        log(
-            f"[SMULE EXTRACT PARSED] "
-            f"scheme={parsed.scheme} host={host} path={path} query={query}"
-        )
+            def on_request(req):
+                req_url = req.url
+                if ".m4a" in req_url or ".mp4" in req_url or ".m3u8" in req_url:
+                    media_urls.add(req_url)
+                    log(f"[SMULE PW MEDIA] {req_url}")
 
-        if not parsed.scheme or not host:
-            result["reason"] = "url_parse_failed"
-            log(f"[SMULE EXTRACT FAIL] url={url} reason={result['reason']}")
-            return result
+            page.on("request", on_request)
 
-        if not (host == "smule.com" or host.endswith(".smule.com")):
-            result["reason"] = f"not_smule_host:{host}"
-            log(f"[SMULE EXTRACT FAIL] url={url} reason={result['reason']}")
-            return result
+            page.goto(url, wait_until="domcontentloaded", timeout=60000)
+            page.wait_for_timeout(5000)
 
-        headers = {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/122.0.0.0 Safari/537.36"
-            ),
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.9",
-            "Referer": "https://www.smule.com/",
-            "Cache-Control": "no-cache",
-            "Pragma": "no-cache",
-        }
-
-        session = requests.Session()
-
-        # первый прогрев (как браузер)
-        session.get("https://www.smule.com/", headers=headers, timeout=10)
-        
-        proxies_list = get_active_proxies()
-        log(f"[SMULE PROXIES] loaded={len(proxies_list)}")
-
-        last_error = None
-        response = None
-
-        for idx, proxy in enumerate(proxies_list):
             try:
-                log(f"[SMULE TRY {idx+1}/{len(proxies_list)}] proxy={proxy}")
-
-                response = session.get(
-                    url,
-                    headers=headers,
-                    timeout=20,
-                    allow_redirects=True,
-                    proxies={
-                        "http": proxy,
-                        "https": proxy,
+                perf = page.evaluate("""
+                    () => {
+                      const p = window?.DataStore?.Pages?.Recording?.performance || null;
+                      if (!p) return null;
+                      return {
+                        title: p.title ?? null,
+                        artist: p.artist ?? null,
+                        perf_type: p.type ?? null,
+                        perf_status: p.perf_status ?? null,
+                        media_url: p.media_url ?? null,
+                        video_media_url: p.video_media_url ?? null,
+                        video_media_mp4_url: p.video_media_mp4_url ?? null
+                      };
                     }
-                )
-
-                if response.status_code == 200:
-                    log(f"[SMULE PROXY SUCCESS] proxy={proxy} status={response.status_code}")
-                    break
-
-                log(f"[SMULE PROXY BAD STATUS] proxy={proxy} status={response.status_code}")
-                response = None
-                continue
-
+                """)
             except Exception as e:
-                last_error = str(e)
-                log(f"[SMULE PROXY ERROR] proxy={proxy} error={last_error}")
-                continue
+                perf = None
+                log(f"[SMULE PW PERF ERROR] {e}")
 
-        if response is None:
-            log("[SMULE FALLBACK] trying without proxy")
+            log(f"[SMULE PW PERF FOUND] {bool(perf)}")
 
-            response = session.get(
-                url,
-                headers=headers,
-                timeout=20,
-                allow_redirects=True,
+            # пробуем ткнуть play по центру
+            try:
+                page.mouse.click(320, 380)
+                page.wait_for_timeout(5000)
+            except Exception as e:
+                log(f"[SMULE PW CLICK ERROR] {e}")
+
+            urls = list(media_urls)
+
+            if perf:
+                result["title"] = perf.get("title")
+                result["artist"] = perf.get("artist")
+                result["perf_type"] = perf.get("perf_type")
+                result["perf_status"] = perf.get("perf_status")
+
+                if perf.get("video_media_url") or perf.get("video_media_mp4_url"):
+                    result["is_video"] = True
+                elif perf.get("perf_type") == "audio":
+                    result["is_video"] = False
+
+                if perf.get("perf_status") in ("n", "a"):
+                    result["is_processing"] = False
+                elif perf.get("perf_status") is None:
+                    result["is_processing"] = None
+                else:
+                    result["is_processing"] = True
+
+            result["audio_url"] = next((u for u in urls if ".m4a" in u), None)
+            result["video_url"] = next((u for u in urls if ".mp4" in u or ".m3u8" in u), None)
+
+            if result["video_url"] is not None:
+                result["is_video"] = True
+            elif result["audio_url"] is not None and result["is_video"] is None:
+                result["is_video"] = False
+
+            result["ok"] = bool(perf or result["audio_url"] or result["video_url"])
+            result["reason"] = (
+                f"playwright_extract "
+                f"perf_found:{bool(perf)} "
+                f"audio:{bool(result['audio_url'])} "
+                f"video:{bool(result['video_url'])} "
+                f"status:{result['perf_status']}"
             )
 
-            log(f"[SMULE FALLBACK RESULT] status={response.status_code}")
+            browser.close()
 
-        final_url = response.url
-        final_host = (urlparse(final_url).netloc or "").lower()
-        content_type = response.headers.get("Content-Type", "")
-        body = response.text or ""
-
-        log(
-            f"[SMULE EXTRACT HTTP] "
-            f"url={url} status={response.status_code} "
-            f"final_url={final_url} final_host={final_host} "
-            f"content_type={content_type}"
-        )
-
-        if response.status_code not in (200, 403):
-            result["reason"] = f"http_status:{response.status_code}"
-            log(f"[SMULE EXTRACT FAIL] url={url} reason={result['reason']}")
-            return result
-
-        if response.status_code == 403:
-            log(
-                f"[SMULE EXTRACT INFO] url={url} "
-                f"status=403 but trying to parse HTML anyway"
-            )
-
-        datastore_match = re.search(
-            r"window\.DataStore\s*=\s*(\{.*?\})\s*;",
-            body,
-            re.DOTALL,
-        )
-
-        if not datastore_match:
-            log(f"[SMULE EXTRACT INFO] url={url} primary regex failed, trying fallback")
-
-            datastore_match = re.search(
-                r"window\.DataStore\s*=\s*(\{.*\})\s*;\s*",
-                body,
-                re.DOTALL,
-            )
-
-        if not datastore_match:
-            result["reason"] = "datastore_not_found"
-            log(f"[SMULE EXTRACT FAIL] url={url} reason={result['reason']}")
-            return result
-
-        datastore_raw = datastore_match.group(1)
-        log(
-            f"[SMULE EXTRACT DATASTORE FOUND] "
-            f"url={url} datastore_len={len(datastore_raw)}"
-        )
-
-        try:
-            datastore = json.loads(datastore_raw)
-        except Exception as e:
-            result["reason"] = f"datastore_json_parse_failed:{type(e).__name__}:{e}"
-            log(f"[SMULE EXTRACT FAIL] url={url} reason={result['reason']}")
-            return result
-
-        performance = (
-            datastore.get("Pages", {})
-            .get("Recording", {})
-            .get("performance")
-        )
-
-        if not performance:
-            result["reason"] = "performance_not_found"
-            log(f"[SMULE EXTRACT FAIL] url={url} reason={result['reason']}")
-            return result
-
-        result["raw"] = performance
-        result["perf_status"] = performance.get("perf_status")
-        result["perf_type"] = performance.get("type")
-        result["title"] = performance.get("title")
-        result["artist"] = performance.get("artist")
-        result["cover_url"] = performance.get("cover_url")
-        result["media_url"] = performance.get("media_url")
-        result["video_media_url"] = performance.get("video_media_url")
-        result["video_media_mp4_url"] = performance.get("video_media_mp4_url")
-        result["private"] = performance.get("private")
-
-        owner = performance.get("owner") or {}
-        result["author"] = owner.get("handle") or performance.get("performed_by")
-
-        log(
-            f"[SMULE EXTRACT PERFORMANCE] "
-            f"title={result['title']} artist={result['artist']} "
-            f"author={result['author']} perf_type={result['perf_type']} "
-            f"perf_status={result['perf_status']} private={result['private']}"
-        )
-
-        log(
-            f"[SMULE EXTRACT URLS] "
-            f"media_url={'yes' if result['media_url'] else 'no'} "
-            f"video_media_url={'yes' if result['video_media_url'] else 'no'} "
-            f"video_media_mp4_url={'yes' if result['video_media_mp4_url'] else 'no'} "
-            f"cover_url={'yes' if result['cover_url'] else 'no'}"
-        )
-        log(
-            f"[SMULE EXTRACT RAW MEDIA] "
-            f"media_url={result['media_url']} "
-            f"video_media_url={result['video_media_url']} "
-            f"video_media_mp4_url={result['video_media_mp4_url']}"
-        )
-
-        # --- is_video ---
-        if result["video_media_url"] or result["video_media_mp4_url"]:
-            result["is_video"] = True
-        elif result["perf_type"] == "audio":
-            result["is_video"] = False
-        elif result["perf_type"] == "video":
-            result["is_video"] = True
-
-        # --- is_processing ---
-        # пока простая эвристика
-        if result["perf_status"] in ("n", "a"):
-            result["is_processing"] = False
-        elif result["perf_status"] is None:
-            result["is_processing"] = None
-        else:
-            result["is_processing"] = True
-
-        # --- direct urls ---
-        # пока audio_url/video_url = только если уже прямые
-        if isinstance(result["media_url"], str) and result["media_url"].startswith("http"):
-            result["audio_url"] = result["media_url"]
-
-        if isinstance(result["video_media_mp4_url"], str) and result["video_media_mp4_url"].startswith("http"):
-            result["video_url"] = result["video_media_mp4_url"]
-        elif isinstance(result["video_media_url"], str) and result["video_media_url"].startswith("http"):
-            result["video_url"] = result["video_media_url"]
-
-        result["ok"] = True
-        result["reason"] = (
-            f"extract_ok "
-            f"perf_type:{result['perf_type']} "
-            f"perf_status:{result['perf_status']} "
-            f"is_video:{result['is_video']} "
-            f"is_processing:{result['is_processing']} "
-            f"has_media_url:{bool(result['media_url'])} "
-            f"has_video_media_url:{bool(result['video_media_url'])} "
-            f"has_video_media_mp4_url:{bool(result['video_media_mp4_url'])}"
-        )
-
-        log(
-            f"[SMULE EXTRACT OK] "
-            f"url={url} reason={result['reason']}"
-        )
-
+        log(f"[SMULE PW RESULT] {result}")
         return result
 
-    except requests.exceptions.Timeout:
-        result["reason"] = "timeout"
-        log(f"[SMULE EXTRACT ERROR] url={url} error={result['reason']}")
-        return result
-    except requests.exceptions.RequestException as e:
-        result["reason"] = f"request_exception:{type(e).__name__}:{e}"
-        log(f"[SMULE EXTRACT ERROR] url={url} error={result['reason']}")
-        return result
     except Exception as e:
         result["reason"] = f"{type(e).__name__}: {e}"
-        log(f"[SMULE EXTRACT ERROR] url={url} error={result['reason']}")
+        log(f"[SMULE PW ERROR] {result['reason']}")
         return result
