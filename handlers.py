@@ -19,7 +19,7 @@ from bot_core.bot_helpers import sanitize_filename, safe_title, extract_url
 from download_flow import process_download
 from bot_ui import quality_keyboard
 from smule_check import inspect_smule_url
-from smule_extract import extract_smule_media_info
+from smule_extract import extract_smule
 
 
 
@@ -107,7 +107,7 @@ def register_handlers(dp: Dispatcher):
         extract = None
         if check["ok"]:
             log(f"[SMULE PW CALL] url={url}")
-            extract = await asyncio.to_thread(extract_smule_media_info, url)
+            extract = await extract_smule(url)
             log(
                 f"[SMULE EXTRACT RESULT] user_id={user_id} url={url} "
                 f"ok={extract['ok']} is_video={extract['is_video']} "
