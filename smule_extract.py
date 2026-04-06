@@ -78,7 +78,7 @@ def extract_smule_media_info(url: str) -> dict:
             try:
                 log(f"[SMULE TRY {idx+1}/{len(proxies_list)}] proxy={proxy}")
 
-                response = requests.get(
+                response = session.get(
                     url,
                     headers=headers,
                     timeout=20,
@@ -105,7 +105,7 @@ def extract_smule_media_info(url: str) -> dict:
         if response is None:
             log("[SMULE FALLBACK] trying without proxy")
 
-            response = requests.get(
+            response = session.get(
                 url,
                 headers=headers,
                 timeout=20,
@@ -118,8 +118,6 @@ def extract_smule_media_info(url: str) -> dict:
         final_host = (urlparse(final_url).netloc or "").lower()
         content_type = response.headers.get("Content-Type", "")
         body = response.text or ""
-        body_preview = body[:500].replace("\n", " ").replace("\r", " ")
-
 
         log(
             f"[SMULE EXTRACT HTTP] "
