@@ -106,7 +106,8 @@ def register_handlers(dp: Dispatcher):
         )
         extract = None
         if check["ok"]:
-            extract = extract_smule_media_info(url)
+            log(f"[SMULE PW CALL] url={url}")
+            extract = await asyncio.to_thread(extract_smule_media_info, url)
             log(
                 f"[SMULE EXTRACT RESULT] user_id={user_id} url={url} "
                 f"ok={extract['ok']} is_video={extract['is_video']} "
