@@ -20,7 +20,9 @@ def extract_smule_media_info(url: str) -> dict:
         log(f"[SMULE PW START] url={url}")
 
         with sync_playwright() as p:
+            log("[SMULE PW BEFORE LAUNCH]")
             browser = p.chromium.launch(headless=True)
+            log("[SMULE PW AFTER LAUNCH]")
             page = browser.new_page()
             media_urls = set()
 
