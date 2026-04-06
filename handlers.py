@@ -18,6 +18,7 @@ from bot_i18n import t, user_lang
 from bot_core.bot_helpers import sanitize_filename, safe_title, extract_url
 from download_flow import process_download
 from bot_ui import quality_keyboard
+from smule_check import inspect_smule_url
 
 
 
@@ -97,6 +98,17 @@ def register_handlers(dp: Dispatcher):
 
             await message.answer(t("invalid_url", user_id))
             return
+        check = inspect_smule_url(url)
+        log(
+            f"[SMULE CHECK RESULT] user_id={user_id} url={url} "
+            f"ok={check['ok']} is_video={check['is_video']} reason={check['reason']}"
+        )
+        if not check["ok"]:
+            await message.answer("не OK")
+            return
+
+        await message.answer("OK")
+        return
 
         # === CHANGE START ===
         now = datetime.now(timezone.utc)
