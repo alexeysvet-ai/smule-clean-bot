@@ -94,8 +94,13 @@ def extract_smule_media_info(url: str) -> dict:
                 f"status=403 but trying to parse HTML anyway"
             )
 
+        log(f"[SMULE EXTRACT BODY HAS WINDOW.DATASTORE] found={'window.DataStore' in body}")
+        log(f"[SMULE EXTRACT BODY HAS PERFORMANCE] found={'performance' in body}")
+        log(f"[SMULE EXTRACT BODY HAS Pages] found={'Pages' in body}")
+        log(f"[SMULE EXTRACT BODY LEN] len={len(body)}")
+
         datastore_match = re.search(
-            r"window\.DataStore\s*=\s*(\{.*?\})\s*;\s*</script>",
+            r"window\.DataStore\s*=\s*(\{.*?\})\s*;",
             body,
             re.DOTALL,
         )
@@ -112,6 +117,7 @@ def extract_smule_media_info(url: str) -> dict:
         if not datastore_match:
             result["reason"] = "datastore_not_found"
             log(f"[SMULE EXTRACT FAIL] url={url} reason={result['reason']}")
+            log(f"[SMULE EXTRACT BODY PREVIEW 2000] {body[:2000]}")
             return result
 
         datastore_raw = datastore_match.group(1)
