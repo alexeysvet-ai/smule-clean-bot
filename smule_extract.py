@@ -62,7 +62,12 @@ def extract_smule_media_info(url: str) -> dict:
             "Pragma": "no-cache",
         }
 
-        response = requests.get(
+        session = requests.Session()
+
+        # первый прогрев (как браузер)
+        session.get("https://www.smule.com/", headers=headers, timeout=10)
+        
+        response = requests.session.get(
             url,
             headers=headers,
             timeout=20,
@@ -74,6 +79,11 @@ def extract_smule_media_info(url: str) -> dict:
         content_type = response.headers.get("Content-Type", "")
         body = response.text or ""
         body_preview = body[:500].replace("\n", " ").replace("\r", " ")
+        with open("/tmp/smule_debug.html", "w", encoding="utf-8") as f:
+            f.write(body)
+
+        log("[SMULE EXTRACT DEBUG] saved_html=/tmp/smule_debug.html")
+        log(f"[SMULE EXTRACT DEBUG] body_first_500={body[:500]}")
 
         log(
             f"[SMULE EXTRACT HTTP] "
@@ -95,6 +105,7 @@ def extract_smule_media_info(url: str) -> dict:
             )
 
         log(f"[SMULE EXTRACT BODY HAS WINDOW.DATASTORE] found={'window.DataStore' in body}")
+        log(f"[SMULE EXTRACT COOKIES] {session.cookies.get_dict()}")
         log(f"[SMULE EXTRACT BODY HAS PERFORMANCE] found={'performance' in body}")
         log(f"[SMULE EXTRACT BODY HAS Pages] found={'Pages' in body}")
         log(f"[SMULE EXTRACT BODY LEN] len={len(body)}")
