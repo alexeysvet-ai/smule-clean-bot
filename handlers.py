@@ -110,13 +110,12 @@ def register_handlers(dp: Dispatcher):
             extract = await extract_smule(url)
             log(
                 f"[SMULE EXTRACT RESULT] user_id={user_id} url={url} "
-                f"ok={extract['ok']} is_video={extract['is_video']} "
-           # extract = await asyncio.to_thread(extract_smule_media_info, url)
-            #log(
-             #   f"[SMULE EXTRACT RESULT] user_id={user_id} url={url} "
-              #  f"ok={extract['ok']} is_video={extract['is_video']} "
-               # f"is_processing={extract['is_processing']} reason={extract['reason']}"
+                f"ok={extract.get('ok')} "
+                f"proxy={extract.get('proxy')} "
+                f"perf_found={bool(extract.get('perf'))} "
+                f"media_count={len(extract.get('media', []))}"
             )
+
             
         else:
             await message.answer(
