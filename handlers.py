@@ -111,8 +111,13 @@ def register_handlers(dp: Dispatcher):
             log(
                 f"[SMULE EXTRACT RESULT] user_id={user_id} url={url} "
                 f"ok={extract['ok']} is_video={extract['is_video']} "
-                f"is_processing={extract['is_processing']} reason={extract['reason']}"
+           # extract = await asyncio.to_thread(extract_smule_media_info, url)
+            #log(
+             #   f"[SMULE EXTRACT RESULT] user_id={user_id} url={url} "
+              #  f"ok={extract['ok']} is_video={extract['is_video']} "
+               # f"is_processing={extract['is_processing']} reason={extract['reason']}"
             )
+            
         else:
             await message.answer(
                 f"не OK\n"

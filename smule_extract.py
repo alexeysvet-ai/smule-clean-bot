@@ -1,114 +1,97 @@
-from playwright.sync_api import sync_playwright
-from bot_core.utils import log
+import asyncio
+from playwright.async_api import async_playwright
+from proxy import get_active_proxies
 
 
-def extract_smule_media_info(url: str) -> dict:
-    result = {
-        "ok": False,
-        "reason": "",
-        "is_video": None,
-        "is_processing": None,
-        "audio_url": None,
-        "video_url": None,
-        "title": None,
-        "artist": None,
-        "perf_status": None,
-        "perf_type": None,
-    }
+def build_proxy_config(proxy: str) -> dict:
+    raw = proxy.strip()
 
-    try:
-        log(f"[SMULE PW START] url={url}")
+    if "://" not in raw:
+        raw = f"http://{raw}"
 
-        with sync_playwright() as p:
-            log("[SMULE PW BEFORE LAUNCH]")
-            browser = p.chromium.launch(headless=True)
-            log("[SMULE PW AFTER LAUNCH]")
-            page = browser.new_page()
-            media_urls = set()
+    scheme, rest = raw.split("://", 1)
 
-            def on_request(req):
-                req_url = req.url
-                if ".m4a" in req_url or ".mp4" in req_url or ".m3u8" in req_url:
-                    media_urls.add(req_url)
-                    log(f"[SMULE PW MEDIA] {req_url}")
+    if "@" in rest:
+        auth, hostport = rest.split("@", 1)
+        username, password = auth.split(":", 1)
+        return {
+            "server": f"{scheme}://{hostport}",
+            "username": username,
+            "password": password,
+        }
 
-            page.on("request", on_request)
+    return {"server": f"{scheme}://{rest}"}
 
-            page.goto(url, wait_until="domcontentloaded", timeout=60000)
-            page.wait_for_timeout(5000)
 
-            try:
-                perf = page.evaluate("""
-                    () => {
-                      const p = window?.DataStore?.Pages?.Recording?.performance || null;
-                      if (!p) return null;
-                      return {
-                        title: p.title ?? null,
-                        artist: p.artist ?? null,
-                        perf_type: p.type ?? null,
-                        perf_status: p.perf_status ?? null,
-                        media_url: p.media_url ?? null,
-                        video_media_url: p.video_media_url ?? null,
-                        video_media_mp4_url: p.video_media_mp4_url ?? null
-                      };
-                    }
-                """)
-            except Exception as e:
-                perf = None
-                log(f"[SMULE PW PERF ERROR] {e}")
+async def _extract_with_browser(url: str, proxy_cfg: dict):
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(
+            headless=True,
+            proxy=proxy_cfg
+        )
 
-            log(f"[SMULE PW PERF FOUND] {bool(perf)}")
+        page = await browser.new_page()
+        media_urls = set()
 
-            # пробуем ткнуть play по центру
-            try:
-                page.mouse.click(320, 380)
-                page.wait_for_timeout(5000)
-            except Exception as e:
-                log(f"[SMULE PW CLICK ERROR] {e}")
+        def on_request(req):
+            u = req.url
+            if ".m4a" in u or ".mp4" in u or ".m3u8" in u:
+                media_urls.add(u)
 
-            urls = list(media_urls)
+        page.on("request", on_request)
 
-            if perf:
-                result["title"] = perf.get("title")
-                result["artist"] = perf.get("artist")
-                result["perf_type"] = perf.get("perf_type")
-                result["perf_status"] = perf.get("perf_status")
+        await page.goto(url, wait_until="domcontentloaded", timeout=60000)
+        await page.wait_for_timeout(3000)
 
-                if perf.get("video_media_url") or perf.get("video_media_mp4_url"):
-                    result["is_video"] = True
-                elif perf.get("perf_type") == "audio":
-                    result["is_video"] = False
+        try:
+            await page.click("text=Accept Cookies", timeout=3000)
+        except:
+            pass
 
-                if perf.get("perf_status") in ("n", "a"):
-                    result["is_processing"] = False
-                elif perf.get("perf_status") is None:
-                    result["is_processing"] = None
-                else:
-                    result["is_processing"] = True
+        await page.wait_for_timeout(5000)
 
-            result["audio_url"] = next((u for u in urls if ".m4a" in u), None)
-            result["video_url"] = next((u for u in urls if ".mp4" in u or ".m3u8" in u), None)
+        perf = await page.evaluate("""
+            () => {
+              const p = window?.DataStore?.Pages?.Recording?.performance || null;
+              if (!p) return null;
+              return {
+                title: p.title ?? null,
+                artist: p.artist ?? null,
+                perf_type: p.type ?? null,
+                perf_status: p.perf_status ?? null,
+                media_url: p.media_url ?? null,
+                video_media_url: p.video_media_url ?? null,
+                video_media_mp4_url: p.video_media_mp4_url ?? null
+              };
+            }
+        """)
 
-            if result["video_url"] is not None:
-                result["is_video"] = True
-            elif result["audio_url"] is not None and result["is_video"] is None:
-                result["is_video"] = False
+        await browser.close()
 
-            result["ok"] = bool(perf or result["audio_url"] or result["video_url"])
-            result["reason"] = (
-                f"playwright_extract "
-                f"perf_found:{bool(perf)} "
-                f"audio:{bool(result['audio_url'])} "
-                f"video:{bool(result['video_url'])} "
-                f"status:{result['perf_status']}"
-            )
+        return perf, list(media_urls)
 
-            browser.close()
 
-        log(f"[SMULE PW RESULT] {result}")
-        return result
+async def extract_smule(url: str) -> dict:
+    proxies = get_active_proxies()
 
-    except Exception as e:
-        result["reason"] = f"{type(e).__name__}: {e}"
-        log(f"[SMULE PW ERROR] {result['reason']}")
-        return result
+    if not proxies:
+        return {"ok": False, "reason": "no_proxies"}
+
+    for proxy in proxies:
+        try:
+            proxy_cfg = build_proxy_config(proxy)
+
+            perf, media = await _extract_with_browser(url, proxy_cfg)
+
+            if perf or media:
+                return {
+                    "ok": True,
+                    "perf": perf,
+                    "media": media,
+                    "proxy": proxy,
+                }
+
+        except Exception as e:
+            print(f"[SMULE PROXY FAIL] {proxy} err={e}")
+
+    return {"ok": False, "reason": "no_working_proxy"}
