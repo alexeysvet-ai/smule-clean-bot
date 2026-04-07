@@ -1,15 +1,20 @@
 # === handlers.py (FULL FILE) ===
 # BUILD: 20260407-02-SMULE-GUARDS
 
+from datetime import datetime, timezone
+
+from aiogram import types, Dispatcher
+from aiogram.filters import Command
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+from config import STAGE_MODE, ALLOWED_USER_IDS, BOT_CODE, TOKEN, ALERT_CHANNEL_ID
+from bot_core.utils import log
+
 from texts import TEXTS
 from bot_core.alerts import send_alert, build_download_fail_alert
 from bot_core.events import insert_bot_entry
 from bot_core.user_settings import set_user_lang
 from bot_i18n import t, user_lang
-from bot_core.bot_helpers import sanitize_filename, safe_title
-from download_flow import process_download
-from bot_ui import quality_keyboard
-from smule_check import inspect_smule_url
 from smule_extract import extract_smule
 from smule_flow import (
     parse_smule_url,
