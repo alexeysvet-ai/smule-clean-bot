@@ -1,5 +1,5 @@
 # === smule_flow.py ===
-# BUILD: 20260407-01-SMULE-FLOW-BASE
+# BUILD: 20260407-02-SMULE-FLOW-CLEAN
 
 from bot_core.utils import log
 from bot_core.events import insert_bot_event
@@ -24,20 +24,6 @@ def insert_event_safe(bot_code: str, user_id: int, event_type: str, **kwargs):
             f"[DB EVENT ERROR] bot_code={bot_code} "
             f"user_id={user_id} event_type={event_type} error={e}"
         )
-
-
-def build_extract_debug_text(extract: dict) -> str:
-    perf = extract.get("perf") or {}
-    media = extract.get("media") or []
-
-    return (
-        f"OK\n"
-        f"type={perf.get('perf_type')}\n"
-        f"status={perf.get('perf_status')}\n"
-        f"title={perf.get('title')}\n"
-        f"media_count={len(media)}\n"
-        f"proxy={extract.get('proxy')}"
-    )
 
 
 def build_extract_fail_text(extract: dict | None) -> str:

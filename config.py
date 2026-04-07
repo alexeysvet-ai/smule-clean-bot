@@ -26,3 +26,6 @@ ALLOWED_USER_IDS = set(
     int(x) for x in os.getenv("ALLOWED_USER_IDS", "").split(",") if x
 )
 ALERT_CHANNEL_ID = int(os.getenv("ALERT_CHANNEL_ID")) if os.getenv("ALERT_CHANNEL_ID") else None
+
+PROCESSING_WAIT_TIMEOUT_SEC = int(os.getenv("PROCESSING_WAIT_TIMEOUT_SEC", 30))
+PROCESSING_POLL_INTERVAL_SEC = int(os.getenv("PROCESSING_POLL_INTERVAL_SEC", 3))
