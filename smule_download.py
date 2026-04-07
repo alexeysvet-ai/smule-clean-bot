@@ -79,6 +79,8 @@ async def download_smule_file(media_url: str, mode: str, proxy: str | None = Non
     timeout = aiohttp.ClientTimeout(total=300)
 
     async with aiohttp.ClientSession(timeout=timeout) as session:
+        print(f"[SMULE DOWNLOAD TRY] mode={mode} proxy={proxy} media_url={media_url}")
+
         async with session.get(media_url, proxy=proxy) as resp:
             resp.raise_for_status()
 
