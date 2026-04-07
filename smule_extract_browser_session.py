@@ -164,50 +164,24 @@ async def download_smule_file_in_browser(extract: dict, media_url: str, mode: st
     )
 
     try:
-        try:
-            async with page.expect_download(timeout=DOWNLOAD_TIMEOUT*1000) as download_info:
-                await page.evaluate(
-                    """
-                    async (url) => {
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = 'smule_media';
-                        a.rel = 'noopener';
-                        document.body.appendChild(a);
-                        a.click();
-                        a.remove();
-                    }
-                    """,
-                    media_url,
-                )
-
-            download = await download_info.value
-            await download.save_as(temp_path)
-
-        except Exception as download_event_error:
-            print(
-                f"[SMULE DOWNLOAD FALLBACK] "
-                f"mode={mode} proxy={extract.get('proxy')} reason={download_event_error}"
-            )
-
-            referer = page.url
-            user_agent = await page.evaluate("() => navigator.userAgent")
-
-            resp = await context.request.get(
+        async with page.expect_download(timeout=DOWNLOAD_TIMEOUT * 1000) as download_info:
+            await page.evaluate(
+                """
+                async (url) => {
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'smule_media';
+                    a.rel = 'noopener';
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                }
+                """,
                 media_url,
-                headers={
-                    "Referer": referer,
-                    "User-Agent": user_agent,
-                },
-                fail_on_status_code=False,
-                timeout=DOWNLOAD_TIMEOUT*1000,
             )
 
-            if not resp.ok:
-                raise RuntimeError(f"{resp.status} {resp.status_text}")
-
-            with open(temp_path, "wb") as f:
-                f.write(await resp.body())
+        download = await download_info.value
+        await download.save_as(temp_path)
 
         if not os.path.exists(temp_path) or os.path.getsize(temp_path) == 0:
             raise RuntimeError("Downloaded file is empty")
@@ -218,7 +192,6 @@ async def download_smule_file_in_browser(extract: dict, media_url: str, mode: st
         if os.path.exists(temp_path):
             os.remove(temp_path)
         raise
-
 
 async def close_smule_browser_extract(extract: dict):
     page = extract.get("page")
