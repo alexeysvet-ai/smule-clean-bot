@@ -116,7 +116,10 @@ TEXTS = {
         "ru": "⛔ У вас нет доступа к этому боту",
         "en": "⛔ You do not have access to this bot"
     },
-
+    "status_preparing": {
+        "ru": "⚙️ Подготавливаю медиа файл...",
+        "en": "⚙️ Preparing media file..."
+    },
     "smule_media_not_ready": {
         "ru": "⏳ Похоже, Smule ещё готовит это видео.\n\nПопробуй отправить ссылку чуть позже.",
         "en": "⏳ It looks like Smule is still preparing this video.\n\nPlease try sending the link again a bit later."

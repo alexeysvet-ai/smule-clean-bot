@@ -126,6 +126,7 @@ def register_handlers(dp: Dispatcher):
                 "url_received",
                 status="success"
             )
+            await message.answer(t("start", user_id))
 
             now = datetime.now(timezone.utc)
             msg_time = message.date if message.date else now
@@ -254,6 +255,8 @@ def register_handlers(dp: Dispatcher):
                     "extract_success",
                     status="success"
                 )
+
+                await message.answer(t("status_preparing", user_id))
 
                 if mode == "audio":
                     await message.answer(t("status_audio", user_id))
