@@ -2,6 +2,7 @@ import os
 import tempfile
 from playwright.async_api import async_playwright
 from proxy import get_active_proxies
+from config import DOWNLOAD_TIMEOUT
 
 
 def build_proxy_config(proxy: str) -> dict:
@@ -36,7 +37,7 @@ async def _open_page(browser, url: str):
 
     page.on("request", on_request)
 
-    await page.goto(url, wait_until="domcontentloaded", timeout=60000)
+    await page.goto(url, wait_until="domcontentloaded", timeout=DOWNLOAD_TIMEOUT*1000)
     await page.wait_for_timeout(3000)
 
     try:
@@ -149,8 +150,9 @@ async def extract_smule(url: str, keep_browser_open: bool = False) -> dict:
 
 async def download_smule_file_in_browser(extract: dict, media_url: str, mode: str) -> str:
     page = extract.get("page")
-    if not page:
-        raise RuntimeError("Browser page not available")
+    context = extract.get("context")
+    if not page or not context:
+        raise RuntimeError("Browser context/page not available")
 
     suffix = ".m4a" if mode == "audio" else ".mp4"
     fd, temp_path = tempfile.mkstemp(prefix="smule_browser_", suffix=suffix)
@@ -162,29 +164,56 @@ async def download_smule_file_in_browser(extract: dict, media_url: str, mode: st
     )
 
     try:
-        async with page.expect_download(timeout=120000) as download_info:
-            await page.evaluate(
-                """
-                async (url) => {
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = '';
-                    a.rel = 'noopener';
-                    document.body.appendChild(a);
-                    a.click();
-                    a.remove();
-                }
-                """,
-                media_url,
+        try:
+            async with page.expect_download(timeout=DOWNLOAD_TIMEOUT*1000) as download_info:
+                await page.evaluate(
+                    """
+                    async (url) => {
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = 'smule_media';
+                        a.rel = 'noopener';
+                        document.body.appendChild(a);
+                        a.click();
+                        a.remove();
+                    }
+                    """,
+                    media_url,
+                )
+
+            download = await download_info.value
+            await download.save_as(temp_path)
+
+        except Exception as download_event_error:
+            print(
+                f"[SMULE DOWNLOAD FALLBACK] "
+                f"mode={mode} proxy={extract.get('proxy')} reason={download_event_error}"
             )
 
-        download = await download_info.value
-        await download.save_as(temp_path)
+            referer = page.url
+            user_agent = await page.evaluate("() => navigator.userAgent")
+
+            resp = await context.request.get(
+                media_url,
+                headers={
+                    "Referer": referer,
+                    "User-Agent": user_agent,
+                },
+                fail_on_status_code=False,
+                timeout=120000,
+            )
+
+            if not resp.ok:
+                raise RuntimeError(f"{resp.status} {resp.status_text}")
+
+            with open(temp_path, "wb") as f:
+                f.write(await resp.body())
 
         if not os.path.exists(temp_path) or os.path.getsize(temp_path) == 0:
             raise RuntimeError("Downloaded file is empty")
 
         return temp_path
+
     except Exception:
         if os.path.exists(temp_path):
             os.remove(temp_path)
