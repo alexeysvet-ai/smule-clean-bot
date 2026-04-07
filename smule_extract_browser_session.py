@@ -1,5 +1,8 @@
 import os
 import tempfile
+from urllib.parse import urlparse
+
+import aiohttp
 from playwright.async_api import async_playwright
 from proxy import get_active_proxies
 
@@ -186,13 +189,40 @@ async def download_smule_file_in_browser(extract: dict, media_url: str, mode: st
     )
 
     try:
-        resp = await page.request.get(media_url)
-        if not resp.ok:
-            raise RuntimeError(f"{resp.status} {resp.status_text}")
+        cookies = await page.context.cookies([media_url])
+        cookie_header = "; ".join(
+            f"{item['name']}={item['value']}" for item in cookies
+        )
+        user_agent = await page.evaluate("() => navigator.userAgent")
+        referer = page.url or "https://www.smule.com/"
+        parsed = urlparse(referer)
+        origin = f"{parsed.scheme}://{parsed.netloc}" if parsed.scheme and parsed.netloc else "https://www.smule.com"
 
-        data = await resp.body()
-        with open(temp_path, "wb") as f:
-            f.write(data)
+        headers = {
+            "User-Agent": user_agent,
+            "Referer": referer,
+            "Origin": origin,
+            "Accept": "*/*",
+        }
+
+        if cookie_header:
+            headers["Cookie"] = cookie_header
+
+        timeout = aiohttp.ClientTimeout(total=None, sock_connect=60, sock_read=300)
+
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get(
+                media_url,
+                headers=headers,
+                proxy=extract.get("proxy")
+            ) as resp:
+                if resp.status != 200:
+                    raise RuntimeError(f"{resp.status} {resp.reason}")
+
+                with open(temp_path, "wb") as f:
+                    async for chunk in resp.content.iter_chunked(262144):
+                        if chunk:
+                            f.write(chunk)
 
         return temp_path
     except Exception:
