@@ -199,7 +199,7 @@ def register_handlers(dp: Dispatcher):
         perf_status = perf.get("perf_status")
         is_video_like = perf_type in ("video", "visualizer")
 
-        if perf_status == "processing" or (is_video_like and len(media) == 0):
+        if perf_status == "processing"
             try:
                 insert_bot_event(
                     BOT_CODE,
