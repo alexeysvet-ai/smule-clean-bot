@@ -37,9 +37,9 @@ def pick_smule_media(extract: dict) -> tuple[str | None, str | None]:
 
     perf_type = perf.get("perf_type")
 
-    direct_audio = perf.get("media_url")
-    direct_video_mp4 = perf.get("video_media_mp4_url")
-    direct_video = perf.get("video_media_url")
+    direct_audio = decode_smule_url(perf.get("media_url"))
+    direct_video_mp4 = decode_smule_url(perf.get("video_media_mp4_url"))
+    direct_video = decode_smule_url(perf.get("video_media_url"))
 
     media_m4a = None
     media_mp4 = None
