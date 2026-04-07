@@ -1,20 +1,22 @@
 # === handlers.py (FULL FILE) ===
 # BUILD: 20260407-02-SMULE-GUARDS
 
-from datetime import datetime, timezone
-from bot_state import last_update_ts, process_start_ts
-from aiogram import types, Dispatcher
-from aiogram.filters import Command
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from config import STAGE_MODE, ALLOWED_USER_IDS, BOT_CODE, TOKEN, ALERT_CHANNEL_ID
-from bot_core.utils import log
 from texts import TEXTS
 from bot_core.alerts import send_alert, build_download_fail_alert
-from bot_core.events import insert_bot_entry, insert_bot_event
+from bot_core.events import insert_bot_entry
 from bot_core.user_settings import set_user_lang
 from bot_i18n import t, user_lang
-from bot_core.bot_helpers import extract_url
+from bot_core.bot_helpers import sanitize_filename, safe_title
+from download_flow import process_download
+from bot_ui import quality_keyboard
+from smule_check import inspect_smule_url
 from smule_extract import extract_smule
+from smule_flow import (
+    parse_smule_url,
+    insert_event_safe,
+    build_extract_debug_text,
+    build_extract_fail_text,
+)
 
 
 def lang_keyboard():
@@ -72,46 +74,24 @@ def register_handlers(dp: Dispatcher):
             )
             return
 
-        raw_text = (message.text or "").strip()
-        url = extract_url(raw_text)
+        url = parse_smule_url(message.text)
 
         if not url:
-            try:
-                insert_bot_event(
-                    BOT_CODE,
-                    user_id,
-                    "url_received_invalid",
-                    status="fail"
-                )
-            except Exception as e:
-                log(f"[DB EVENT ERROR] bot_code={BOT_CODE} user_id={user_id} event_type=url_received_invalid error={e}")
-
-            await message.answer(t("invalid_url", user_id))
-            return
-
-        if "smule.com" not in url:
-            try:
-                insert_bot_event(
-                    BOT_CODE,
-                    user_id,
-                    "url_received_invalid",
-                    status="fail"
-                )
-            except Exception as e:
-                log(f"[DB EVENT ERROR] bot_code={BOT_CODE} user_id={user_id} event_type=url_received_invalid error={e}")
-
-            await message.answer(t("invalid_url", user_id))
-            return
-
-        try:
-            insert_bot_event(
+            insert_event_safe(
                 BOT_CODE,
                 user_id,
-                "url_received",
-                status="success"
+                "url_received_invalid",
+                status="fail"
             )
-        except Exception as e:
-            log(f"[DB EVENT ERROR] bot_code={BOT_CODE} user_id={user_id} event_type=url_received error={e}")
+            await message.answer(t("invalid_url", user_id))
+            return
+
+        insert_event_safe(
+            BOT_CODE,
+            user_id,
+            "url_received",
+            status="success"
+        )
 
         now = datetime.now(timezone.utc)
         msg_time = message.date if message.date else now
@@ -127,17 +107,13 @@ def register_handlers(dp: Dispatcher):
         except Exception as e:
             log(f"[SMULE EXTRACT EXCEPTION] user_id={user_id} url={url} error={e}")
 
-            try:
-                insert_bot_event(
-                    BOT_CODE,
-                    user_id,
-                    "extract_exception",
-                    status="fail",
-                    error_text_short=str(e)[:500]
-                )
-            except Exception as db_e:
-                log(f"[DB EVENT ERROR] bot_code={BOT_CODE} user_id={user_id} event_type=extract_exception error={db_e}")
-
+            insert_event_safe(
+                BOT_CODE,
+                user_id,
+                "extract_exception",
+                status="fail",
+                error_text_short=str(e)[:500]
+            )
             await message.answer(t("smule_extract_error", user_id))
 
             try:
@@ -163,21 +139,15 @@ def register_handlers(dp: Dispatcher):
         )
 
         if not extract or not extract["ok"]:
-            try:
-                insert_bot_event(
-                    BOT_CODE,
-                    user_id,
-                    "extract_failed",
-                    status="fail",
-                    error_text_short=(extract.get('reason') if extract else 'no_extract')[:500]
-                )
-            except Exception as e:
-                log(f"[DB EVENT ERROR] bot_code={BOT_CODE} user_id={user_id} event_type=extract_failed error={e}")
-
-            await message.answer(
-                f"EXTRACT FAIL\n"
-                f"extract_reason={extract.get('reason') if extract else 'no_extract'}"
+            insert_event_safe(
+                BOT_CODE,
+                user_id,
+                "extract_failed",
+                status="fail",
+                error_text_short=(extract.get('reason') if extract else 'no_extract')[:500]
             )
+
+            await message.answer(build_extract_fail_text(extract))
 
             try:
                 alert_text = build_download_fail_alert(
@@ -199,37 +169,23 @@ def register_handlers(dp: Dispatcher):
         perf_status = perf.get("perf_status")
         is_video_like = perf_type in ("video", "visualizer")
 
-        if perf_status == "processing"
-            try:
-                insert_bot_event(
-                    BOT_CODE,
-                    user_id,
-                    "media_not_ready",
-                    status="success",
-                    error_text_short=f"perf_status={perf_status}"[:500]
-                )
-            except Exception as e:
-                log(f"[DB EVENT ERROR] bot_code={BOT_CODE} user_id={user_id} event_type=media_not_ready error={e}")
+        if perf_status == "processing":
+            insert_event_safe(
+                BOT_CODE,
+                user_id,
+                "media_not_ready",
+                status="success",
+                error_text_short=f"perf_type={perf_type}; perf_status={perf_status}"[:500]
+            )
 
             await message.answer(t("smule_media_not_ready", user_id))
             return
 
-        try:
-            insert_bot_event(
-                BOT_CODE,
-                user_id,
-                "extract_success",
-                status="success"
-            )
-        except Exception as e:
-            log(f"[DB EVENT ERROR] bot_code={BOT_CODE} user_id={user_id} event_type=extract_success error={e}")
-
-        await message.answer(
-            f"OK\n"
-            f"type={perf.get('perf_type')}\n"
-            f"status={perf.get('perf_status')}\n"
-            f"title={perf.get('title')}\n"
-            f"media_count={len(media)}\n"
-            f"proxy={extract.get('proxy')}"
+        insert_event_safe(
+            BOT_CODE,
+            user_id,
+            "extract_success",
+            status="success"
         )
+        await message.answer(build_extract_debug_text(extract))
         return
