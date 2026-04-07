@@ -70,7 +70,7 @@ def build_smule_title(extract: dict) -> str:
     return base[:120]
 
 
-async def download_smule_file(media_url: str, mode: str) -> str:
+async def download_smule_file(media_url: str, mode: str, proxy: str | None = None) -> str:
     suffix = ".m4a" if mode == "audio" else ".mp4"
 
     fd, temp_path = tempfile.mkstemp(prefix="smule_", suffix=suffix)
@@ -79,7 +79,7 @@ async def download_smule_file(media_url: str, mode: str) -> str:
     timeout = aiohttp.ClientTimeout(total=300)
 
     async with aiohttp.ClientSession(timeout=timeout) as session:
-        async with session.get(media_url) as resp:
+        async with session.get(media_url, proxy=proxy) as resp:
             resp.raise_for_status()
 
             with open(temp_path, "wb") as f:

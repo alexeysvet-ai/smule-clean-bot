@@ -250,7 +250,11 @@ def register_handlers(dp: Dispatcher):
                 mode=mode
             )
 
-            temp_path = await download_smule_file(media_url, mode)
+            temp_path = await download_smule_file(
+                media_url,
+                mode,
+                proxy=extract.get("proxy")
+            )
             title = build_smule_title(extract)
             file_path = build_final_path(temp_path, title, mode)
 
