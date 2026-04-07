@@ -86,10 +86,20 @@ def register_handlers(dp: Dispatcher):
 
         await callback.message.edit_text(t("welcome", callback.from_user.id))
 
-    @dp.message(lambda message: message.text and not message.text.startswith("/"))
-    async def handle_video(message: types.Message):
-        user_id = message.from_user.id
+   @dp.message(lambda message: message.text and not message.text.startswith("/"))
+async def handle_video(message: types.Message):
+    import bot_state
 
+    user_id = message.from_user.id
+    dedupe_key = f"{message.chat.id}:{message.message_id}"
+
+    if dedupe_key in bot_state.user_requests:
+        log(f"[DEDUPE SKIP] key={dedupe_key} user_id={user_id}")
+        return
+
+    bot_state.user_requests[dedupe_key] = datetime.now(timezone.utc).timestamp()
+
+    try:
         if STAGE_MODE and message.from_user.id not in ALLOWED_USER_IDS:
             await message.answer(
                 TEXTS["stage_restricted"]["ru"] + " / " + TEXTS["stage_restricted"]["en"]
@@ -364,3 +374,6 @@ def register_handlers(dp: Dispatcher):
                     os.remove(file_path)
                 except Exception as e:
                     log(f"[CLEANUP ERROR] {e}")
+
+    finally:
+        bot_state.user_requests.pop(dedupe_key, None)
