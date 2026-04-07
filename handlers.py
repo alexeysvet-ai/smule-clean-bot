@@ -1,5 +1,5 @@
 # === handlers.py ===
-# BUILD: 20260407-04-SMULE-BROWSER-DOWNLOAD-CLEAN
+# BUILD: 20260408-01-SMULE-SINGLE-BROWSER-SINGLE-DOWNLOAD
 
 from datetime import datetime, timezone
 import asyncio
@@ -91,21 +91,22 @@ def register_handlers(dp: Dispatcher):
         import bot_state
 
         user_id = message.from_user.id
+        message_id = message.message_id
         dedupe_key = f"{message.chat.id}:{message.message_id}"
 
-        if dedupe_key in bot_state.user_requests:
+        if STAGE_MODE and message.from_user.id not in ALLOWED_USER_IDS:
+            await message.answer(
+                TEXTS["stage_restricted"]["ru"] + " / " + TEXTS["stage_restricted"]["en"]
+            )
+            return
+
+        if bot_state.user_requests.get(dedupe_key):
             log(f"[DEDUPE SKIP] key={dedupe_key} user_id={user_id}")
             return
 
         bot_state.user_requests[dedupe_key] = datetime.now(timezone.utc).timestamp()
 
-        try:
-            if STAGE_MODE and message.from_user.id not in ALLOWED_USER_IDS:
-                await message.answer(
-                    TEXTS["stage_restricted"]["ru"] + " / " + TEXTS["stage_restricted"]["en"]
-                )
-                return
-
+        async with bot_state.download_semaphore:
             url = parse_smule_url(message.text)
 
             if not url:
@@ -116,6 +117,7 @@ def register_handlers(dp: Dispatcher):
                     status="fail"
                 )
                 await message.answer(t("invalid_url", user_id))
+                bot_state.user_requests.pop(dedupe_key, None)
                 return
 
             insert_event_safe(
@@ -134,160 +136,136 @@ def register_handlers(dp: Dispatcher):
 
             log(f"[SMULE PW CALL] url={url}")
 
-            try:
-                extract = await extract_smule(url)
-            except Exception as e:
-                log(f"[SMULE EXTRACT EXCEPTION] user_id={user_id} url={url} error={e}")
-
-                insert_event_safe(
-                    BOT_CODE,
-                    user_id,
-                    "extract_exception",
-                    status="fail",
-                    error_text_short=str(e)[:500]
-                )
-                await message.answer(t("smule_extract_error", user_id))
-
-                try:
-                    alert_text = build_download_fail_alert(
-                        BOT_CODE,
-                        user_id,
-                        url,
-                        "extract",
-                        str(e)
-                    )
-                    await send_alert(TOKEN, ALERT_CHANNEL_ID, alert_text)
-                except Exception as alert_e:
-                    log(f"[ALERT ERROR] bot_code={BOT_CODE} user_id={user_id} error={alert_e}")
-
-                return
-
-            log(
-                f"[SMULE EXTRACT RESULT] user_id={user_id} url={url} "
-                f"ok={extract.get('ok')} "
-                f"proxy={extract.get('proxy')} "
-                f"perf_found={bool(extract.get('perf'))} "
-                f"media_count={len(extract.get('media', []))}"
-            )
-
-            if not extract or not extract.get("ok"):
-                insert_event_safe(
-                    BOT_CODE,
-                    user_id,
-                    "extract_failed",
-                    status="fail",
-                    error_text_short=(extract.get("reason") if extract else "no_extract")[:500]
-                )
-
-                await message.answer(build_extract_fail_text(extract))
-
-                try:
-                    alert_text = build_download_fail_alert(
-                        BOT_CODE,
-                        user_id,
-                        url,
-                        "extract",
-                        extract.get("reason") if extract else "no_extract"
-                    )
-                    await send_alert(TOKEN, ALERT_CHANNEL_ID, alert_text)
-                except Exception as e:
-                    log(f"[ALERT ERROR] bot_code={BOT_CODE} user_id={user_id} error={e}")
-
-                return
-
-            perf = extract.get("perf") or {}
-            perf_type = perf.get("perf_type")
-            perf_status = perf.get("perf_status")
-
-            if perf_status == "processing":
-                start = datetime.now(timezone.utc)
-
-                while True:
-                    await asyncio.sleep(PROCESSING_POLL_INTERVAL_SEC)
-
-                    try:
-                        extract = await extract_smule(url)
-                    except Exception as e:
-                        log(f"[SMULE RETRY EXTRACT ERROR] user_id={user_id} error={e}")
-                        continue
-
-                    if not extract or not extract.get("ok"):
-                        log(f"[SMULE RETRY EXTRACT NOT READY] user_id={user_id}")
-                        continue
-
-                    perf = extract.get("perf") or {}
-                    if not perf:
-                        log(f"[SMULE RETRY PERF MISSING] user_id={user_id}")
-                        continue
-
-                    perf_status = perf.get("perf_status")
-
-                    if perf_status != "processing":
-                        break
-
-                    if (datetime.now(timezone.utc) - start).total_seconds() > PROCESSING_WAIT_TIMEOUT_SEC:
-                        insert_event_safe(
-                            BOT_CODE,
-                            user_id,
-                            "media_not_ready_timeout",
-                            status="fail"
-                        )
-                        await message.answer(t("smule_media_not_ready", user_id))
-                        return
-
-            mode, media_url = pick_smule_media(extract)
-
-            if not mode or not media_url:
-                insert_event_safe(
-                    BOT_CODE,
-                    user_id,
-                    "media_url_not_found",
-                    status="fail",
-                    error_text_short=f"perf_type={perf_type}; perf_status={perf_status}"[:500]
-                )
-                await message.answer(t("error", user_id))
-                return
-
-            insert_event_safe(
-                BOT_CODE,
-                user_id,
-                "extract_success",
-                status="success"
-            )
-
-            if mode == "audio":
-                await message.answer(t("status_audio", user_id))
-            else:
-                await message.answer(t("status_video", user_id))
-
             file_path = None
-            download_extract = None
+            extract = None
+            mode = None
+            media_url = None
 
             try:
                 insert_event_safe(
                     BOT_CODE,
                     user_id,
                     "download_started",
-                    status="success",
-                    mode=mode
+                    status="success"
                 )
 
-                download_extract = await extract_smule(url, keep_browser_open=True)
-                if not download_extract or not download_extract.get("ok"):
-                    raise RuntimeError(
-                        f"Browser extract failed: {download_extract.get('reason') if download_extract else 'no_extract'}"
-                    )
+                extract = await extract_smule(url, keep_browser_open=True)
 
-                mode, media_url = pick_smule_media(download_extract)
+                if not extract or not extract.get("ok"):
+                    insert_event_safe(
+                        BOT_CODE,
+                        user_id,
+                        "extract_failed",
+                        status="fail",
+                        error_text_short=(extract.get("reason") if extract else "no_extract")[:500]
+                    )
+                    await message.answer(build_extract_fail_text(extract))
+
+                    try:
+                        alert_text = build_download_fail_alert(
+                            BOT_CODE,
+                            user_id,
+                            url,
+                            "extract",
+                            extract.get("reason") if extract else "no_extract"
+                        )
+                        await send_alert(TOKEN, ALERT_CHANNEL_ID, alert_text)
+                    except Exception as e:
+                        log(f"[ALERT ERROR] bot_code={BOT_CODE} user_id={user_id} error={e}")
+                    return
+
+                log(
+                    f"[SMULE EXTRACT RESULT] user_id={user_id} message_id={message_id} url={url} "
+                    f"ok={extract.get('ok')} "
+                    f"proxy={extract.get('proxy')} "
+                    f"perf_found={bool(extract.get('perf'))} "
+                    f"media_count={len(extract.get('media', []))}"
+                )
+
+                perf = extract.get("perf") or {}
+                perf_type = perf.get("perf_type")
+                perf_status = perf.get("perf_status")
+
+                if perf_status == "processing":
+                    await close_smule_browser_extract(extract)
+                    extract = None
+
+                    start = datetime.now(timezone.utc)
+
+                    while True:
+                        await asyncio.sleep(PROCESSING_POLL_INTERVAL_SEC)
+
+                        try:
+                            retry_extract = await extract_smule(url)
+                        except Exception as e:
+                            log(f"[SMULE RETRY EXTRACT ERROR] user_id={user_id} message_id={message_id} error={e}")
+                            continue
+
+                        if not retry_extract or not retry_extract.get("ok"):
+                            log(f"[SMULE RETRY EXTRACT NOT READY] user_id={user_id} message_id={message_id}")
+                            continue
+
+                        retry_perf = retry_extract.get("perf") or {}
+                        if not retry_perf:
+                            log(f"[SMULE RETRY PERF MISSING] user_id={user_id} message_id={message_id}")
+                            continue
+
+                        perf_status = retry_perf.get("perf_status")
+
+                        if perf_status != "processing":
+                            break
+
+                        if (datetime.now(timezone.utc) - start).total_seconds() > PROCESSING_WAIT_TIMEOUT_SEC:
+                            insert_event_safe(
+                                BOT_CODE,
+                                user_id,
+                                "media_not_ready_timeout",
+                                status="fail"
+                            )
+                            await message.answer(t("smule_media_not_ready", user_id))
+                            return
+
+                    extract = await extract_smule(url, keep_browser_open=True)
+                    if not extract or not extract.get("ok"):
+                        raise RuntimeError(
+                            f"Browser extract failed: {extract.get('reason') if extract else 'no_extract'}"
+                        )
+
+                    perf = extract.get("perf") or {}
+                    perf_type = perf.get("perf_type")
+                    perf_status = perf.get("perf_status")
+
+                mode, media_url = pick_smule_media(extract)
+
                 if not mode or not media_url:
-                    raise RuntimeError("Browser media URL not found")
+                    insert_event_safe(
+                        BOT_CODE,
+                        user_id,
+                        "media_url_not_found",
+                        status="fail",
+                        error_text_short=f"perf_type={perf_type}; perf_status={perf_status}"[:500]
+                    )
+                    await message.answer(t("error", user_id))
+                    return
+
+                insert_event_safe(
+                    BOT_CODE,
+                    user_id,
+                    "extract_success",
+                    status="success"
+                )
+
+                if mode == "audio":
+                    await message.answer(t("status_audio", user_id))
+                else:
+                    await message.answer(t("status_video", user_id))
 
                 temp_path = await download_smule_file_in_browser(
-                    download_extract,
+                    extract,
                     media_url,
                     mode
                 )
-                title = build_smule_title(download_extract)
+                title = build_smule_title(extract)
                 file_path = build_final_path(temp_path, title, mode)
 
                 if not file_path or not os.path.exists(file_path):
@@ -307,7 +285,7 @@ def register_handlers(dp: Dispatcher):
                     await message.answer_audio(
                         types.FSInputFile(file_path),
                         title=title,
-                        performer=(download_extract.get("perf") or {}).get("artist") or "",
+                        performer=(extract.get("perf") or {}).get("artist") or "",
                         caption=final_caption
                     )
                 else:
@@ -327,7 +305,7 @@ def register_handlers(dp: Dispatcher):
                 return
 
             except Exception as e:
-                log(f"[SMULE DOWNLOAD ERROR] bot_code={BOT_CODE} user_id={user_id} mode={mode} error={e}")
+                log(f"[SMULE DOWNLOAD ERROR] bot_code={BOT_CODE} user_id={user_id} message_id={message_id} mode={mode} error={e}")
 
                 if "File too big" in str(e):
                     insert_event_safe(
@@ -356,7 +334,7 @@ def register_handlers(dp: Dispatcher):
                         BOT_CODE,
                         user_id,
                         url,
-                        mode,
+                        mode or "download",
                         str(e)
                     )
                     await send_alert(TOKEN, ALERT_CHANNEL_ID, alert_text)
@@ -366,8 +344,8 @@ def register_handlers(dp: Dispatcher):
                 return
 
             finally:
-                if download_extract:
-                    await close_smule_browser_extract(download_extract)
+                if extract:
+                    await close_smule_browser_extract(extract)
 
                 if file_path and os.path.exists(file_path):
                     try:
@@ -375,5 +353,4 @@ def register_handlers(dp: Dispatcher):
                     except Exception as e:
                         log(f"[CLEANUP ERROR] {e}")
 
-        finally:
-            bot_state.user_requests.pop(dedupe_key, None)
+                bot_state.user_requests.pop(dedupe_key, None)
