@@ -1,26 +1,20 @@
 # === handlers.py (FULL FILE) ===
-# BUILD: 20260329-02-UX
+# BUILD: 20260407-01-SMULE-CLEANUP
 
-import asyncio
 from datetime import datetime, timezone
-from bot_state import download_semaphore, user_requests, last_update_ts, process_start_ts
+from bot_state import last_update_ts, process_start_ts
 from aiogram import types, Dispatcher
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from config import STAGE_MODE, ALLOWED_USER_IDS, BOT_CODE
-from downloader import download_video
+from config import STAGE_MODE, ALLOWED_USER_IDS, BOT_CODE, TOKEN, ALERT_CHANNEL_ID
 from bot_core.utils import log
 from texts import TEXTS
 from bot_core.alerts import send_alert, build_download_fail_alert
 from bot_core.events import insert_bot_entry, insert_bot_event
 from bot_core.user_settings import set_user_lang
 from bot_i18n import t, user_lang
-from bot_core.bot_helpers import sanitize_filename, safe_title, extract_url
-from download_flow import process_download
-from bot_ui import quality_keyboard
-from smule_check import inspect_smule_url
+from bot_core.bot_helpers import extract_url
 from smule_extract import extract_smule
-
 
 
 def lang_keyboard():
@@ -29,13 +23,6 @@ def lang_keyboard():
          InlineKeyboardButton(text="🇺🇸", callback_data="lang_en")]
     ])
 
-# ===================== DOWNLOAD =====================
-
-async def safe_download(url, mode, semaphore):
-    async with semaphore:
-        return await asyncio.to_thread(download_video, url, mode)
-
-# ===================== HANDLERS =====================
 
 def register_handlers(dp: Dispatcher):
 
@@ -66,7 +53,7 @@ def register_handlers(dp: Dispatcher):
     async def set_lang(callback: types.CallbackQuery):
         lang = callback.data.split("_")[1]
         user_lang[callback.from_user.id] = lang
-        
+
         try:
             set_user_lang(BOT_CODE, callback.from_user.id, lang)
             log(f"[DB LANG SAVE OK] bot_code={BOT_CODE} user_id={callback.from_user.id} lang={lang}")
@@ -78,11 +65,13 @@ def register_handlers(dp: Dispatcher):
     @dp.message(lambda message: message.text and not message.text.startswith("/"))
     async def handle_video(message: types.Message):
         user_id = message.from_user.id
+
         if STAGE_MODE and message.from_user.id not in ALLOWED_USER_IDS:
             await message.answer(
                 TEXTS["stage_restricted"]["ru"] + " / " + TEXTS["stage_restricted"]["en"]
             )
             return
+
         raw_text = (message.text or "").strip()
         url = extract_url(raw_text)
 
@@ -99,10 +88,38 @@ def register_handlers(dp: Dispatcher):
 
             await message.answer(t("invalid_url", user_id))
             return
+
         if "smule.com" not in url:
+            try:
+                insert_bot_event(
+                    BOT_CODE,
+                    user_id,
+                    "url_received_invalid",
+                    status="fail"
+                )
+            except Exception as e:
+                log(f"[DB EVENT ERROR] bot_code={BOT_CODE} user_id={user_id} event_type=url_received_invalid error={e}")
+
             await message.answer(t("invalid_url", user_id))
             return
-        extract = None
+
+        try:
+            insert_bot_event(
+                BOT_CODE,
+                user_id,
+                "url_received",
+                status="success"
+            )
+        except Exception as e:
+            log(f"[DB EVENT ERROR] bot_code={BOT_CODE} user_id={user_id} event_type=url_received error={e}")
+
+        now = datetime.now(timezone.utc)
+        msg_time = message.date if message.date else now
+        lag_sec = (now - msg_time).total_seconds()
+
+        if lag_sec > 10:
+            await message.answer(t("lag_long", user_id))
+
         log(f"[SMULE PW CALL] url={url}")
         extract = await extract_smule(url)
         log(
@@ -114,11 +131,45 @@ def register_handlers(dp: Dispatcher):
         )
 
         if not extract or not extract["ok"]:
+            try:
+                insert_bot_event(
+                    BOT_CODE,
+                    user_id,
+                    "extract_failed",
+                    status="fail",
+                    error_text_short=(extract.get('reason') if extract else 'no_extract')[:500]
+                )
+            except Exception as e:
+                log(f"[DB EVENT ERROR] bot_code={BOT_CODE} user_id={user_id} event_type=extract_failed error={e}")
+
             await message.answer(
                 f"EXTRACT FAIL\n"
                 f"extract_reason={extract.get('reason') if extract else 'no_extract'}"
             )
+
+            try:
+                alert_text = build_download_fail_alert(
+                    BOT_CODE,
+                    user_id,
+                    url,
+                    "extract",
+                    extract.get('reason') if extract else 'no_extract'
+                )
+                await send_alert(TOKEN, ALERT_CHANNEL_ID, alert_text)
+            except Exception as e:
+                log(f"[ALERT ERROR] bot_code={BOT_CODE} user_id={user_id} error={e}")
+
             return
+
+        try:
+            insert_bot_event(
+                BOT_CODE,
+                user_id,
+                "extract_success",
+                status="success"
+            )
+        except Exception as e:
+            log(f"[DB EVENT ERROR] bot_code={BOT_CODE} user_id={user_id} event_type=extract_success error={e}")
 
         perf = extract.get("perf") or {}
         media = extract.get("media") or []
@@ -132,40 +183,3 @@ def register_handlers(dp: Dispatcher):
             f"proxy={extract.get('proxy')}"
         )
         return
-
-    @dp.callback_query(lambda c: c.data.startswith("q_"))
-    async def handle_quality(callback: types.CallbackQuery):
-        user_id = callback.from_user.id
-        url = user_requests.get(user_id)
-        mode = callback.data.split("_")[1]
-
-        if not url:
-            await callback.message.answer(t("expired_request", user_id))
-            return
-
-        await callback.answer()
-
-        try:
-            insert_bot_event(
-                BOT_CODE,
-                user_id,
-                "download_mode_selected",
-                status="success",
-                mode=mode
-            )
-        except Exception as e:
-            log(f"[DB EVENT ERROR] bot_code={BOT_CODE} user_id={user_id} event_type=download_mode_selected mode={mode} error={e}")
-
-        # === CHANGE START ===
-        now = datetime.now(timezone.utc)
-        msg_time = callback.message.date if callback.message else now
-
-        lag_sec = (now - msg_time).total_seconds()
-
-        if lag_sec > 10:
-            await callback.message.answer(t("lag_long", user_id))
-        # === CHANGE END ===
-
-        asyncio.create_task(process_download(callback, user_id, url, mode, t, safe_download, download_semaphore, user_requests))
-
-
