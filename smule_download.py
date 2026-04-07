@@ -1,12 +1,34 @@
 # === smule_download.py ===
 # BUILD: 20260407-01-SMULE-DOWNLOAD
 
+import base64
 import os
 import re
 import tempfile
-from urllib.parse import urlparse
-
 import aiohttp
+from config import SMULE_SECRET_KEY as SECRET_KEY
+
+def decode_smule_url(url_encoded: str | None) -> str | None:
+    if not url_encoded or not url_encoded.startswith("e:"):
+        return url_encoded
+
+    def register_char_pool(value: str) -> str:
+        return base64.b64decode(value + "=" * (-len(value) % 4)).decode("latin1")
+
+    secret_pool = register_char_pool(SECRET_KEY)
+    public_pool = register_char_pool(url_encoded[2:])
+    state = list(range(256))
+    h = 0
+    for b in range(256):
+        h = (h + state[b] + ord(secret_pool[b % len(secret_pool)])) % 256
+        state[b], state[h] = state[h], state[b]
+    out, b, h = [], 0, 0
+    for ch in public_pool:
+        b = (b + 1) % 256
+        h = (h + state[b]) % 256
+        state[b], state[h] = state[h], state[b]
+        out.append(chr(ord(ch) ^ state[(state[b] + state[h]) % 256]))
+    return "".join(out)
 
 
 def pick_smule_media(extract: dict) -> tuple[str | None, str | None]:
