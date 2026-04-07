@@ -98,8 +98,8 @@ TEXTS = {
     },
 
     "invalid_url": {
-        "ru": "Похоже, это не ссылка 🙂\n\nПришли, пожалуйста, ссылку на видео (YouTube, VK и т.д.), и я помогу его скачать",
-        "en": "That doesn't look like a valid link 🙂\n\nPlease send a video URL (YouTube, VK, etc.), and I’ll help download it"
+        "ru": "Похоже, это не ссылка 🙂\n\nПришли, пожалуйста, ссылку на Smule запись, и я помогу его скачать",
+        "en": "That doesn't look like a valid link 🙂\n\nPlease send a Smule link, and I’ll help download it"
     },
 
     "expired_request": {
