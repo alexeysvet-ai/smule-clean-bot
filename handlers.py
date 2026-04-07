@@ -1,5 +1,5 @@
 # === handlers.py (FULL FILE) ===
-# BUILD: 20260407-01-SMULE-CLEANUP
+# BUILD: 20260407-02-SMULE-GUARDS
 
 from datetime import datetime, timezone
 from bot_state import last_update_ts, process_start_ts
@@ -121,7 +121,39 @@ def register_handlers(dp: Dispatcher):
             await message.answer(t("lag_long", user_id))
 
         log(f"[SMULE PW CALL] url={url}")
-        extract = await extract_smule(url)
+
+        try:
+            extract = await extract_smule(url)
+        except Exception as e:
+            log(f"[SMULE EXTRACT EXCEPTION] user_id={user_id} url={url} error={e}")
+
+            try:
+                insert_bot_event(
+                    BOT_CODE,
+                    user_id,
+                    "extract_exception",
+                    status="fail",
+                    error_text_short=str(e)[:500]
+                )
+            except Exception as db_e:
+                log(f"[DB EVENT ERROR] bot_code={BOT_CODE} user_id={user_id} event_type=extract_exception error={db_e}")
+
+            await message.answer(t("smule_extract_error", user_id))
+
+            try:
+                alert_text = build_download_fail_alert(
+                    BOT_CODE,
+                    user_id,
+                    url,
+                    "extract",
+                    str(e)
+                )
+                await send_alert(TOKEN, ALERT_CHANNEL_ID, alert_text)
+            except Exception as alert_e:
+                log(f"[ALERT ERROR] bot_code={BOT_CODE} user_id={user_id} error={alert_e}")
+
+            return
+
         log(
             f"[SMULE EXTRACT RESULT] user_id={user_id} url={url} "
             f"ok={extract.get('ok')} "
@@ -161,6 +193,27 @@ def register_handlers(dp: Dispatcher):
 
             return
 
+        perf = extract.get("perf") or {}
+        media = extract.get("media") or []
+        perf_type = perf.get("perf_type")
+        perf_status = perf.get("perf_status")
+        is_video_like = perf_type in ("video", "visualizer")
+
+        if is_video_like and (perf_status == "processing" or len(media) == 0):
+            try:
+                insert_bot_event(
+                    BOT_CODE,
+                    user_id,
+                    "media_not_ready",
+                    status="success",
+                    error_text_short=f"perf_status={perf_status}"[:500]
+                )
+            except Exception as e:
+                log(f"[DB EVENT ERROR] bot_code={BOT_CODE} user_id={user_id} event_type=media_not_ready error={e}")
+
+            await message.answer(t("smule_media_not_ready", user_id))
+            return
+
         try:
             insert_bot_event(
                 BOT_CODE,
@@ -170,9 +223,6 @@ def register_handlers(dp: Dispatcher):
             )
         except Exception as e:
             log(f"[DB EVENT ERROR] bot_code={BOT_CODE} user_id={user_id} event_type=extract_success error={e}")
-
-        perf = extract.get("perf") or {}
-        media = extract.get("media") or []
 
         await message.answer(
             f"OK\n"
