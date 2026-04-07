@@ -99,48 +99,37 @@ def register_handlers(dp: Dispatcher):
 
             await message.answer(t("invalid_url", user_id))
             return
-        check = inspect_smule_url(url)
-        log(
-            f"[SMULE CHECK RESULT] user_id={user_id} url={url} "
-            f"ok={check['ok']} is_video={check['is_video']} reason={check['reason']}"
-        )
-        extract = None
-        if check["ok"]:
-            log(f"[SMULE PW CALL] url={url}")
-            extract = await extract_smule(url)
-            log(
-                f"[SMULE EXTRACT RESULT] user_id={user_id} url={url} "
-                f"ok={extract.get('ok')} "
-                f"proxy={extract.get('proxy')} "
-                f"perf_found={bool(extract.get('perf'))} "
-                f"media_count={len(extract.get('media', []))}"
-            )
-
-            
-        else:
-            await message.answer(
-                f"не OK\n"
-                f"reason={check['reason']}\n"
-                f"path_type={check.get('path_type')}\n"
-                f"http_status={check.get('http_status')}"
-            )
+        if "smule.com" not in url:
+            await message.answer(t("invalid_url", user_id))
             return
+        extract = None
+        log(f"[SMULE PW CALL] url={url}")
+        extract = await extract_smule(url)
+        log(
+            f"[SMULE EXTRACT RESULT] user_id={user_id} url={url} "
+            f"ok={extract.get('ok')} "
+            f"proxy={extract.get('proxy')} "
+            f"perf_found={bool(extract.get('perf'))} "
+            f"media_count={len(extract.get('media', []))}"
+        )
 
         if not extract or not extract["ok"]:
             await message.answer(
-                f"OK CHECK / EXTRACT FAIL\n"
-                f"check_reason={check['reason']}\n"
-                f"extract_reason={extract['reason'] if extract else 'no_extract'}"
+                f"EXTRACT FAIL\n"
+                f"extract_reason={extract.get('reason') if extract else 'no_extract'}"
             )
             return
 
+        perf = extract.get("perf") or {}
+        media = extract.get("media") or []
+
         await message.answer(
             f"OK\n"
-            f"type={extract['perf_type']}\n"
-            f"is_video={extract['is_video']}\n"
-            f"is_processing={extract['is_processing']}\n"
-            f"status={extract['perf_status']}\n"
-            f"title={extract['title']}"
+            f"type={perf.get('perf_type')}\n"
+            f"status={perf.get('perf_status')}\n"
+            f"title={perf.get('title')}\n"
+            f"media_count={len(media)}\n"
+            f"proxy={extract.get('proxy')}"
         )
         return
 
