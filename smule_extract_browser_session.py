@@ -37,7 +37,7 @@ async def _open_page(browser, url: str):
 
     page.on("request", on_request)
 
-    await page.goto(url, wait_until="domcontentloaded", timeout=DOWNLOAD_TIMEOUT*1000)
+    await page.goto(url, wait_until="domcontentloaded", timeout=6000)
     await page.wait_for_timeout(3000)
 
     try:
@@ -200,7 +200,7 @@ async def download_smule_file_in_browser(extract: dict, media_url: str, mode: st
                     "User-Agent": user_agent,
                 },
                 fail_on_status_code=False,
-                timeout=120000,
+                timeout=DOWNLOAD_TIMEOUT*1000,
             )
 
             if not resp.ok:
