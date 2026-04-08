@@ -40,6 +40,30 @@ from smule_download import (
     build_final_path,
 )
 
+def log_mem(tag: str):
+    try:
+        rss_kb = 0
+        mem_avail_kb = 0
+
+        with open("/proc/self/status", "r", encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("VmRSS:"):
+                    rss_kb = int(line.split()[1])
+                    break
+
+        with open("/proc/meminfo", "r", encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("MemAvailable:"):
+                    mem_avail_kb = int(line.split()[1])
+                    break
+
+        rss_mb = rss_kb / 1024
+        mem_avail_mb = mem_avail_kb / 1024
+
+        log(f"[MEM] {tag} rss_mb={rss_mb:.1f} avail_mb={mem_avail_mb:.1f}")
+    except Exception as e:
+        log(f"[MEM ERROR] tag={tag} error={e}")
+
 
 def lang_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -89,7 +113,8 @@ def register_handlers(dp: Dispatcher):
     @dp.message(lambda message: message.text and not message.text.startswith("/"))
     async def handle_video(message: types.Message):
         import bot_state
-
+        
+        log_mem("start_handle_video")
         user_id = message.from_user.id
         message_id = message.message_id
         dedupe_key = f"{message.chat.id}:{message.message_id}"
@@ -107,6 +132,7 @@ def register_handlers(dp: Dispatcher):
         bot_state.user_requests[dedupe_key] = datetime.now(timezone.utc).timestamp()
 
         async with bot_state.download_semaphore:
+            log_mem("before_download")
             url = parse_smule_url(message.text)
 
             if not url:
@@ -151,6 +177,7 @@ def register_handlers(dp: Dispatcher):
                 )
 
                 extract = await extract_smule(url, keep_browser_open=True)
+                log_mem("after_extract")
 
                 if not extract or not extract.get("ok"):
                     insert_event_safe(
@@ -268,6 +295,7 @@ def register_handlers(dp: Dispatcher):
                     media_url,
                     mode
                 )
+                log_mem("after_download")
                 title = build_smule_title(extract)
                 file_path = build_final_path(temp_path, title, mode)
 
@@ -296,7 +324,7 @@ def register_handlers(dp: Dispatcher):
                         types.FSInputFile(file_path),
                         caption=final_caption
                     )
-
+                log_mem("after_send")
                 insert_event_safe(
                     BOT_CODE,
                     user_id,
@@ -355,5 +383,5 @@ def register_handlers(dp: Dispatcher):
                         os.remove(file_path)
                     except Exception as e:
                         log(f"[CLEANUP ERROR] {e}")
-
+                log_mem("finally_before_cleanup")
                 bot_state.user_requests.pop(dedupe_key, None)
