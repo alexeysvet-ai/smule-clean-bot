@@ -164,6 +164,8 @@ async def download_smule_file_in_browser(extract: dict, media_url: str, mode: st
     )
 
     try:
+        log_mem("before_page.request.get")
+
         resp = await page.request.get(
             media_url,
             timeout=DOWNLOAD_TIMEOUT * 1000,
