@@ -150,9 +150,8 @@ async def extract_smule(url: str, keep_browser_open: bool = False) -> dict:
 
 async def download_smule_file_in_browser(extract: dict, media_url: str, mode: str) -> str:
     page = extract.get("page")
-    context = extract.get("context")
-    if not page or not context:
-        raise RuntimeError("Browser context/page not available")
+    if not page:
+        raise RuntimeError("Browser page not available")
 
     suffix = ".m4a" if mode == "audio" else ".mp4"
     fd, temp_path = tempfile.mkstemp(prefix="smule_browser_", suffix=suffix)
@@ -164,24 +163,20 @@ async def download_smule_file_in_browser(extract: dict, media_url: str, mode: st
     )
 
     try:
-        async with page.expect_download(timeout=DOWNLOAD_TIMEOUT * 1000) as download_info:
-            await page.evaluate(
-                """
-                async (url) => {
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = 'smule_media';
-                    a.rel = 'noopener';
-                    document.body.appendChild(a);
-                    a.click();
-                    a.remove();
-                }
-                """,
-                media_url,
-            )
+        resp = await page.request.get(
+            media_url,
+            timeout=DOWNLOAD_TIMEOUT * 1000,
+            fail_on_status_code=True,
+            headers={
+                "Referer": page.url,
+                "User-Agent": await page.evaluate("() => navigator.userAgent"),
+            },
+        )
 
-        download = await download_info.value
-        await download.save_as(temp_path)
+        data = await resp.body()
+
+        with open(temp_path, "wb") as f:
+            f.write(data)
 
         if not os.path.exists(temp_path) or os.path.getsize(temp_path) == 0:
             raise RuntimeError("Downloaded file is empty")
