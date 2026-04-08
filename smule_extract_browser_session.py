@@ -3,7 +3,7 @@ import tempfile
 from playwright.async_api import async_playwright
 from proxy import get_active_proxies
 from config import DOWNLOAD_TIMEOUT
-
+from handlers
 
 def build_proxy_config(proxy: str) -> dict:
     raw = proxy.strip()
@@ -173,7 +173,9 @@ async def download_smule_file_in_browser(extract: dict, media_url: str, mode: st
             },
         )
 
+        log_mem("before_resp_body")
         data = await resp.body()
+        log_mem("after_resp_body")
 
         with open(temp_path, "wb") as f:
             f.write(data)
