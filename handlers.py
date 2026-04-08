@@ -109,7 +109,7 @@ def register_handlers(dp: Dispatcher):
         user_id = message.from_user.id
         message_id = message.message_id
         dedupe_key = f"{message.chat.id}:{message.message_id}"
-        bg_mem_task = asyncio.create_task(mem_logger_task(message_id))
+ #       bg_mem_task = asyncio.create_task(mem_logger_task(message_id))
 
         age_sec = get_message_age_sec(message)
         log(f"[FLOW AGE] message_id={message_id} age_sec={age_sec:.1f}")

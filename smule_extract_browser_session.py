@@ -180,6 +180,8 @@ async def download_smule_file_in_browser(extract: dict, media_url: str, mode: st
 
         with open(temp_path, "wb") as f:
             f.write(data)
+        log_mem("after_f.write")
+
 
         if not os.path.exists(temp_path) or os.path.getsize(temp_path) == 0:
             raise RuntimeError("Downloaded file is empty")
