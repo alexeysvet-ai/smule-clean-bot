@@ -3,8 +3,7 @@ import tempfile
 from playwright.async_api import async_playwright
 from proxy import get_active_proxies
 from config import DOWNLOAD_TIMEOUT
-from handlers import log_mem
-from bot_core.utils import log
+from logger import log_mem
 
 
 def build_proxy_config(proxy: str) -> dict:
