@@ -14,7 +14,7 @@ from smule_download import pick_smule_media
 #   python diag_smule_browser_session_stream.py <smule_url>
 # or set URL below.
 
-URL = ""  # optional fallback
+SMULE_URL = ""  # optional fallback
 
 
 def build_cookie_jar(cookies: list, media_url: str) -> aiohttp.CookieJar:
@@ -89,7 +89,7 @@ async def download_with_browser_session_stream(page, media_url: str, mode: str) 
 
 
 async def main():
-    url = sys.argv[1].strip() if len(sys.argv) > 1 else URL.strip()
+    url = sys.argv[1].strip() if len(sys.argv) > 1 else SMULE_URL.strip()
     if not url:
         print("Usage: python diag_smule_browser_session_stream.py <smule_url>")
         return
