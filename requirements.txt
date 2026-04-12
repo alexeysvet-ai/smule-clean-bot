@@ -4,3 +4,4 @@ yt-dlp
 requests
 playwright
 git+https://github.com/alexeysvet-ai/bot-core-lib.git@v0.6.0
+curl_cffi

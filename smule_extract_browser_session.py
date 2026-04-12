@@ -4,7 +4,7 @@ from playwright.async_api import async_playwright
 from proxy import get_active_proxies
 from config import DOWNLOAD_TIMEOUT
 from logger import log_mem
-
+from curl_cffi.requests import AsyncSession
 
 def build_proxy_config(proxy: str) -> dict:
     raw = proxy.strip()
@@ -148,42 +148,52 @@ async def extract_smule(url: str, keep_browser_open: bool = False) -> dict:
 
     return {"ok": False, "reason": "no_working_proxy"}
 
-
 async def download_smule_file_in_browser(extract: dict, media_url: str, mode: str) -> str:
+    context = extract.get("context")
     page = extract.get("page")
-    if not page:
-        raise RuntimeError("Browser page not available")
+    proxy = extract.get("proxy")
+
+    if not context or not page:
+        raise RuntimeError("Browser context/page not available")
 
     suffix = ".m4a" if mode == "audio" else ".mp4"
-    fd, temp_path = tempfile.mkstemp(prefix="smule_browser_", suffix=suffix)
+    fd, temp_path = tempfile.mkstemp(prefix="smule_curl_", suffix=suffix)
     os.close(fd)
 
     print(
-        f"[SMULE BROWSER DOWNLOAD TRY] "
-        f"mode={mode} proxy={extract.get('proxy')} media_url={media_url}"
+        f"[CURL STREAM] "
+        f"mode={mode} proxy={proxy} media_url={media_url}"
     )
 
     try:
-        log_mem("before_page.request.get")
+        cookies_list = await context.cookies()
+        cookies = {c["name"]: c["value"] for c in cookies_list}
 
-        resp = await page.request.get(
-            media_url,
-            timeout=DOWNLOAD_TIMEOUT * 1000,
-            fail_on_status_code=True,
-            headers={
-                "Referer": page.url,
-                "User-Agent": await page.evaluate("() => navigator.userAgent"),
-            },
-        )
+        user_agent = await page.evaluate("() => navigator.userAgent")
 
-        log_mem("before_resp_body")
-        data = await resp.body()
-        log_mem("after_resp_body")
+        headers = {
+            "User-Agent": user_agent,
+            "Referer": "https://www.smule.com/",
+        }
 
-        with open(temp_path, "wb") as f:
-            f.write(data)
-        log_mem("after_f.write")
+        async with AsyncSession(impersonate="chrome120") as session:
+            resp = await session.get(
+                media_url,
+                headers=headers,
+                cookies=cookies,
+                proxies={"https": proxy} if proxy else None,
+                stream=True,
+            )
 
+            print(f"[CURL STREAM] status={resp.status_code}")
+
+            resp.raise_for_status()
+
+            with open(temp_path, "wb") as f:
+                async for chunk in resp.aiter_content(chunk_size=256 * 1024):
+                    if not chunk:
+                        continue
+                    f.write(chunk)
 
         if not os.path.exists(temp_path) or os.path.getsize(temp_path) == 0:
             raise RuntimeError("Downloaded file is empty")
@@ -194,6 +204,7 @@ async def download_smule_file_in_browser(extract: dict, media_url: str, mode: st
         if os.path.exists(temp_path):
             os.remove(temp_path)
         raise
+
 
 async def close_smule_browser_extract(extract: dict):
     page = extract.get("page")
