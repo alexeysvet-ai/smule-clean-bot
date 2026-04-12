@@ -30,8 +30,10 @@ def decode_smule_url(url_encoded: str | None) -> str | None:
         out.append(chr(ord(ch) ^ state[(state[b] + state[h]) % 256]))
     return "".join(out)
 
-
-def pick_smule_media(extract: dict) -> tuple[str | None, str | None]:
+def pick_smule_media(
+    extract: dict,
+    preferred_mode: str | None = None
+) -> tuple[str | None, str | None]:
     perf = extract.get("perf") or {}
     media = extract.get("media") or []
 
@@ -49,6 +51,22 @@ def pick_smule_media(extract: dict) -> tuple[str | None, str | None]:
             media_m4a = url
         if not media_mp4 and ".mp4" in url:
             media_mp4 = url
+
+    if preferred_mode == "audio":
+        if direct_audio:
+            return "audio", direct_audio
+        if media_m4a:
+            return "audio", media_m4a
+        return None, None
+
+    if preferred_mode == "video":
+        if direct_video_mp4:
+            return "video", direct_video_mp4
+        if direct_video and ".mp4" in direct_video:
+            return "video", direct_video
+        if media_mp4:
+            return "video", media_mp4
+        return None, None
 
     if perf_type in ("video", "visualizer"):
         if direct_video_mp4:
@@ -71,7 +89,6 @@ def pick_smule_media(extract: dict) -> tuple[str | None, str | None]:
         return "video", media_mp4
 
     return None, None
-
 
 def build_smule_title(extract: dict) -> str:
     perf = extract.get("perf") or {}

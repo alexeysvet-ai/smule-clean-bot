@@ -132,5 +132,19 @@ TEXTS = {
     "send_retry": {
         "ru": "⚠️ Возникли проблемы с отправкой файла. Пробую ещё раз...",
         "en": "⚠️ There was a problem sending the file. Retrying..."
-}
+},
+    "choose_format": {
+        "ru": "Выбери, что скачать:",
+        "en": "Choose what to download:"
+    },
+
+    "format_audio": {
+        "ru": "🎵 Аудио",
+        "en": "🎵 Audio"
+    },
+
+    "format_video": {
+        "ru": "🎬 Видео",
+        "en": "🎬 Video"
+    },
 }

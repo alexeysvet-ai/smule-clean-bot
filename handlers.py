@@ -48,16 +48,21 @@ def get_message_age_sec(message: types.Message) -> float:
     msg_time = message.date if message.date else now
     return (now - msg_time).total_seconds()
 
-
 def lang_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🇷🇺", callback_data="lang_ru"),
          InlineKeyboardButton(text="🇺🇸", callback_data="lang_en")]
     ])
 
+def format_keyboard(user_id: int):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text=t("format_audio", user_id), callback_data="smule_format_audio"),
+            InlineKeyboardButton(text=t("format_video", user_id), callback_data="smule_format_video"),
+        ]
+    ])
 
 def register_handlers(dp: Dispatcher):
-
     @dp.message(Command("start"))
     async def start(message: types.Message):
         import bot_state
@@ -93,6 +98,200 @@ def register_handlers(dp: Dispatcher):
             log(f"[DB LANG SAVE ERROR] bot_code={BOT_CODE} user_id={callback.from_user.id} lang={lang} error={e}")
 
         await callback.message.edit_text(t("welcome", callback.from_user.id))
+    @dp.callback_query(lambda c: c.data in ("smule_format_audio", "smule_format_video"))
+    async def choose_smule_format(callback: types.CallbackQuery):
+        import bot_state
+
+        user_id = callback.from_user.id
+
+        if not hasattr(bot_state, "smule_pending"):
+            bot_state.smule_pending = {}
+
+        pending = bot_state.smule_pending.get(user_id)
+        if not pending:
+            await callback.answer("Request expired", show_alert=False)
+            await callback.message.answer(t("expired_request", user_id))
+            return
+
+        url = pending.get("url")
+        mode = "audio" if callback.data == "smule_format_audio" else "video"
+
+        await callback.answer()
+        await callback.message.edit_reply_markup(reply_markup=None)
+        await callback.message.answer(t("status_preparing", user_id))
+
+        if mode == "audio":
+            await callback.message.answer(t("status_audio", user_id))
+        else:
+            await callback.message.answer(t("status_video", user_id))
+
+        file_path = None
+        extract = None
+
+        try:
+            insert_event_safe(
+                BOT_CODE,
+                user_id,
+                "download_started",
+                status="success"
+            )
+
+            extract = await extract_smule(url, keep_browser_open=True)
+
+            if not extract or not extract.get("ok"):
+                raise RuntimeError(
+                    f"Browser extract failed: {extract.get('reason') if extract else 'no_extract'}"
+                )
+
+            perf = extract.get("perf") or {}
+            perf_status = perf.get("perf_status")
+
+            if perf_status == "processing":
+                await close_smule_browser_extract(extract)
+                extract = None
+
+                start = datetime.now(timezone.utc)
+
+                while True:
+                    await asyncio.sleep(PROCESSING_POLL_INTERVAL_SEC)
+
+                    try:
+                        retry_extract = await extract_smule(url)
+                    except Exception as e:
+                        log(f"[SMULE RETRY EXTRACT ERROR] user_id={user_id} error={e}")
+                        continue
+
+                    if not retry_extract or not retry_extract.get("ok"):
+                        log(f"[SMULE RETRY EXTRACT NOT READY] user_id={user_id}")
+                        continue
+
+                    retry_perf = retry_extract.get("perf") or {}
+                    if not retry_perf:
+                        log(f"[SMULE RETRY PERF MISSING] user_id={user_id}")
+                        continue
+
+                    perf_status = retry_perf.get("perf_status")
+
+                    if perf_status != "processing":
+                        break
+
+                    if (datetime.now(timezone.utc) - start).total_seconds() > PROCESSING_WAIT_TIMEOUT_SEC:
+                        insert_event_safe(
+                            BOT_CODE,
+                            user_id,
+                            "media_not_ready_timeout",
+                            status="fail"
+                        )
+                        await callback.message.answer(t("smule_media_not_ready", user_id))
+                        return
+
+                extract = await extract_smule(url, keep_browser_open=True)
+                if not extract or not extract.get("ok"):
+                    raise RuntimeError(
+                        f"Browser extract failed: {extract.get('reason') if extract else 'no_extract'}"
+                    )
+
+            selected_mode, media_url = pick_smule_media(extract, preferred_mode=mode)
+
+            if not selected_mode or not media_url:
+                insert_event_safe(
+                    BOT_CODE,
+                    user_id,
+                    "media_url_not_found",
+                    status="fail",
+                    error_text_short=f"preferred_mode={mode}"[:500]
+                )
+                await callback.message.answer(t("error", user_id))
+                return
+
+            temp_path = await download_smule_file_in_browser(
+                extract,
+                media_url,
+                selected_mode
+            )
+            title = build_smule_title(extract)
+            file_path = build_final_path(temp_path, title, selected_mode)
+
+            if not file_path or not os.path.exists(file_path):
+                raise RuntimeError("File not created")
+
+            size = os.path.getsize(file_path)
+            size_mb = round(size / (1024 * 1024), 2)
+
+            result_text = t("file_info", user_id).format(
+                ext=("M4A" if selected_mode == "audio" else "MP4"),
+                size=size_mb
+            )
+
+            final_caption = t("success", user_id) + "\n\n" + result_text
+            await send_media_with_retry(
+                callback=callback,
+                user_id=user_id,
+                file_path=file_path,
+                mode=selected_mode,
+                title=title,
+                uploader=(extract.get("perf") or {}).get("artist"),
+                caption=final_caption,
+                retry_text=t("send_retry", user_id)
+            )
+
+            insert_event_safe(
+                BOT_CODE,
+                user_id,
+                "download_success",
+                status="success",
+                mode=selected_mode,
+                file_size_bytes=size
+            )
+
+        except Exception as e:
+            log(f"[SMULE DOWNLOAD ERROR] bot_code={BOT_CODE} user_id={user_id} mode={mode} error={e}")
+
+            if "File too big" in str(e):
+                insert_event_safe(
+                    BOT_CODE,
+                    user_id,
+                    "download_rejected_too_big",
+                    status="rejected",
+                    mode=mode
+                )
+                await callback.message.answer(t("too_big", user_id))
+                return
+
+            insert_event_safe(
+                BOT_CODE,
+                user_id,
+                "download_failed",
+                status="fail",
+                mode=mode,
+                error_text_short=str(e)[:500]
+            )
+
+            await callback.message.answer(t("error", user_id))
+
+            try:
+                alert_text = build_download_fail_alert(
+                    BOT_CODE,
+                    user_id,
+                    url,
+                    mode,
+                    str(e)
+                )
+                await send_alert(TOKEN, ALERT_CHANNEL_ID, alert_text)
+            except Exception as alert_e:
+                log(f"[ALERT ERROR] bot_code={BOT_CODE} user_id={user_id} error={alert_e}")
+
+        finally:
+            bot_state.smule_pending.pop(user_id, None)
+
+            if extract:
+                await close_smule_browser_extract(extract)
+
+            if file_path and os.path.exists(file_path):
+                try:
+                    os.remove(file_path)
+                except Exception as e:
+                    log(f"[CLEANUP ERROR] {e}")
 
     @dp.message(lambda message: message.text and not message.text.startswith("/"))
     async def handle_video(message: types.Message):
@@ -153,7 +352,6 @@ def register_handlers(dp: Dispatcher):
 
             if lag_sec > 10:
                 await message.answer(t("lag_long", user_id))
-
             log(f"[SMULE PW CALL] url={url}")
 
             file_path = None
@@ -255,18 +453,12 @@ def register_handlers(dp: Dispatcher):
                     perf_type = perf.get("perf_type")
                     perf_status = perf.get("perf_status")
 
-                mode, media_url = pick_smule_media(extract)
+                if not hasattr(bot_state, "smule_pending"):
+                    bot_state.smule_pending = {}
 
-                if not mode or not media_url:
-                    insert_event_safe(
-                        BOT_CODE,
-                        user_id,
-                        "media_url_not_found",
-                        status="fail",
-                        error_text_short=f"perf_type={perf_type}; perf_status={perf_status}"[:500]
-                    )
-                    await message.answer(t("error", user_id))
-                    return
+                bot_state.smule_pending[user_id] = {
+                    "url": url
+                }
 
                 insert_event_safe(
                     BOT_CODE,
@@ -275,51 +467,9 @@ def register_handlers(dp: Dispatcher):
                     status="success"
                 )
 
-                await message.answer(t("status_preparing", user_id))
-
-                if mode == "audio":
-                    await message.answer(t("status_audio", user_id))
-                else:
-                    await message.answer(t("status_video", user_id))
-
-                temp_path = await download_smule_file_in_browser(
-                    extract,
-                    media_url,
-                    mode
-                )
-                title = build_smule_title(extract)
-                file_path = build_final_path(temp_path, title, mode)
-
-                if not file_path or not os.path.exists(file_path):
-                    raise RuntimeError("File not created")
-
-                size = os.path.getsize(file_path)
-                size_mb = round(size / (1024 * 1024), 2)
-
-                result_text = t("file_info", user_id).format(
-                    ext=("M4A" if mode == "audio" else "MP4"),
-                    size=size_mb
-                )
-
-                final_caption = t("success", user_id) + "\n\n" + result_text
-                await send_media_with_retry(
-                    callback=SimpleNamespace(message=message),
-                    user_id=user_id,
-                    file_path=file_path,
-                    mode=mode,
-                    title=title,
-                    uploader=(extract.get("perf") or {}).get("artist"),
-                    caption=final_caption,
-                    retry_text=t("send_retry", user_id)
-               )
-
-                insert_event_safe(
-                    BOT_CODE,
-                    user_id,
-                    "download_success",
-                    status="success",
-                    mode=mode,
-                    file_size_bytes=size
+                await message.answer(
+                    t("choose_format", user_id),
+                    reply_markup=format_keyboard(user_id)
                 )
                 return
 
