@@ -302,7 +302,7 @@ def register_handlers(dp: Dispatcher):
 
                 final_caption = t("success", user_id) + "\n\n" + result_text
                 await send_media_with_retry(
-                    message=message,
+                    callback=callback,
                     user_id=user_id,
                     file_path=file_path,
                     mode=mode,
