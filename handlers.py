@@ -4,6 +4,7 @@
 from datetime import datetime, timezone
 import asyncio
 import contextlib
+from types import SimpleNamespace
 import os
 from aiogram import types, Dispatcher
 from aiogram.filters import Command
@@ -302,7 +303,7 @@ def register_handlers(dp: Dispatcher):
 
                 final_caption = t("success", user_id) + "\n\n" + result_text
                 await send_media_with_retry(
-                    callback=callback,
+                    callback=SimpleNamespace(message=message),
                     user_id=user_id,
                     file_path=file_path,
                     mode=mode,
