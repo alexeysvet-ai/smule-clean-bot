@@ -1,4 +1,4 @@
-from aiohttp import ClientTimeout, web, ClientSession
+from aiohttp import ClientTimeout, web
 from aiogram import Bot, Dispatcher, types
 import asyncio
 from config import TELEGRAM_TIMEOUT, TOKEN, WEBHOOK_PATH, WEBHOOK_URL, PORT
@@ -15,11 +15,9 @@ timeout = ClientTimeout(
     sock_read=TELEGRAM_TIMEOUT / 1.5
 )
 
-session = ClientSession(timeout=timeout)
-
 bot = Bot(
     token=TOKEN,
-    session=session
+    timeout=timeout
 )
 
 dp = Dispatcher()
