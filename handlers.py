@@ -5,7 +5,6 @@ from datetime import datetime, timezone
 import asyncio
 import contextlib
 import os
-from logger import log_mem
 from aiogram import types, Dispatcher
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -48,14 +47,6 @@ def get_message_age_sec(message: types.Message) -> float:
     msg_time = message.date if message.date else now
     return (now - msg_time).total_seconds()
 
-
-async def mem_logger_task(message_id: int):
-    try:
-        while True:
-            log_mem(f"bg message_id={message_id}")
-            await asyncio.sleep(MEM_LOG_INTERVAL_SEC)
-    except asyncio.CancelledError:
-        pass
 
 def lang_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -106,21 +97,16 @@ def register_handlers(dp: Dispatcher):
     async def handle_video(message: types.Message):
         import bot_state
         
-        log_mem("start_handle_video")
         user_id = message.from_user.id
         message_id = message.message_id
         dedupe_key = f"{message.chat.id}:{message.message_id}"
- #       bg_mem_task = asyncio.create_task(mem_logger_task(message_id))
 
         age_sec = get_message_age_sec(message)
         log(f"[FLOW AGE] message_id={message_id} age_sec={age_sec:.1f}")
 
         if age_sec > FLOW_TIMEOUT_SEC:
             log(f"[FLOW TIMEOUT] stage=entry message_id={message_id} age_sec={age_sec:.1f}")
-            bg_mem_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await bg_mem_task
-            return
+
         if STAGE_MODE and message.from_user.id not in ALLOWED_USER_IDS:
             await message.answer(
                 TEXTS["stage_restricted"]["ru"] + " / " + TEXTS["stage_restricted"]["en"]
@@ -134,7 +120,6 @@ def register_handlers(dp: Dispatcher):
         bot_state.user_requests[dedupe_key] = datetime.now(timezone.utc).timestamp()
 
         async with bot_state.download_semaphore:
-            log_mem("before_download")
             url = parse_smule_url(message.text)
             age_sec = get_message_age_sec(message)
             log(f"[FLOW AGE] stage=before_download message_id={message_id} age_sec={age_sec:.1f}")
@@ -184,7 +169,6 @@ def register_handlers(dp: Dispatcher):
                 )
 
                 extract = await extract_smule(url, keep_browser_open=True)
-                log_mem("after_extract")
 
                 if not extract or not extract.get("ok"):
                     insert_event_safe(
@@ -302,7 +286,6 @@ def register_handlers(dp: Dispatcher):
                     media_url,
                     mode
                 )
-                log_mem("after_download")
                 title = build_smule_title(extract)
                 file_path = build_final_path(temp_path, title, mode)
 
@@ -319,7 +302,7 @@ def register_handlers(dp: Dispatcher):
 
                 final_caption = t("success", user_id) + "\n\n" + result_text
                 await send_media_with_retry(
-                    callback=types.SimpleNamespace(message=message),
+                    message=message,
                     user_id=user_id,
                     file_path=file_path,
                     mode=mode,
@@ -329,7 +312,6 @@ def register_handlers(dp: Dispatcher):
                     retry_text=t("send_retry", user_id)
                )
 
-                log_mem("after_send")
                 insert_event_safe(
                     BOT_CODE,
                     user_id,
@@ -388,8 +370,5 @@ def register_handlers(dp: Dispatcher):
                         os.remove(file_path)
                     except Exception as e:
                         log(f"[CLEANUP ERROR] {e}")
-                log_mem("finally_before_cleanup")
-                bg_mem_task.cancel()
-                with contextlib.suppress(asyncio.CancelledError):
-                    await bg_mem_task
+
                 bot_state.user_requests.pop(dedupe_key, None)
