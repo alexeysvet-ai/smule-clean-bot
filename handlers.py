@@ -354,7 +354,6 @@ def register_handlers(dp: Dispatcher):
                 "url_received",
                 status="success"
             )
-            await message.answer(t("start", user_id))
 
             now = datetime.now(timezone.utc)
             msg_time = message.date if message.date else now
@@ -362,6 +361,9 @@ def register_handlers(dp: Dispatcher):
 
             if lag_sec > 10:
                 await message.answer(t("lag_long", user_id))
+            else:
+                await message.answer(t("start", user_id))
+
             log(f"[SMULE PW CALL] url={url}")
 
             file_path = None
@@ -411,6 +413,18 @@ def register_handlers(dp: Dispatcher):
                 )
 
                 perf = extract.get("perf") or {}
+                media = extract.get("media") or []
+
+                if not perf or not media:
+                    insert_event_safe(
+                        BOT_CODE,
+                        user_id,
+                        "no_media_found",
+                        status="fail"
+                    )
+                    await message.answer(t("no_media", user_id))
+                    return
+
                 perf_type = perf.get("perf_type")
                 perf_status = perf.get("perf_status")
 
