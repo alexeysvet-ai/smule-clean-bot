@@ -128,5 +128,9 @@ TEXTS = {
     "smule_extract_error": {
         "ru": "😔 Не удалось обработать ссылку прямо сейчас.\n\nПопробуй ещё раз чуть позже.",
         "en": "😔 Failed to process this link right now.\n\nPlease try again a bit later."
-    }
+    },
+    "send_retry": {
+        "ru": "⚠️ Возникли проблемы с отправкой файла. Пробую ещё раз...",
+        "en": "⚠️ There was a problem sending the file. Retrying..."
+}
 }
