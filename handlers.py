@@ -326,7 +326,7 @@ def register_handlers(dp: Dispatcher):
                     title=title,
                     uploader=(extract.get("perf") or {}).get("artist"),
                     caption=final_caption,
-                    t=t
+                    retry_text=t("send_retry", user_id)
                )
 
                 log_mem("after_send")
