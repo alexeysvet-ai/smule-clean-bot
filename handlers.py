@@ -413,9 +413,10 @@ def register_handlers(dp: Dispatcher):
                 )
 
                 perf = extract.get("perf") or {}
-                media = extract.get("media") or []
 
-                if not perf or not media:
+                auto_mode, auto_media_url = pick_smule_media(extract)
+
+                if not auto_mode or not auto_media_url:
                     insert_event_safe(
                         BOT_CODE,
                         user_id,
