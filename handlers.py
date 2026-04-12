@@ -114,11 +114,21 @@ def register_handlers(dp: Dispatcher):
             return
 
         url = pending.get("url")
+        chat_id = pending.get("chat_id")
+        format_message_id = pending.get("format_message_id")
         mode = "audio" if callback.data == "smule_format_audio" else "video"
 
         await callback.answer()
-        await callback.message.edit_reply_markup(reply_markup=None)
-        await callback.message.answer(t("status_preparing", user_id))
+
+        if chat_id and format_message_id:
+            await callback.bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=format_message_id,
+                text=t("status_preparing", user_id)
+            )
+        else:
+            await callback.message.edit_reply_markup(reply_markup=None)
+            await callback.message.answer(t("status_preparing", user_id))
 
         if mode == "audio":
             await callback.message.answer(t("status_audio", user_id))
@@ -292,7 +302,6 @@ def register_handlers(dp: Dispatcher):
                     os.remove(file_path)
                 except Exception as e:
                     log(f"[CLEANUP ERROR] {e}")
-
     @dp.message(lambda message: message.text and not message.text.startswith("/"))
     async def handle_video(message: types.Message):
         import bot_state
@@ -456,10 +465,6 @@ def register_handlers(dp: Dispatcher):
                 if not hasattr(bot_state, "smule_pending"):
                     bot_state.smule_pending = {}
 
-                bot_state.smule_pending[user_id] = {
-                    "url": url
-                }
-
                 insert_event_safe(
                     BOT_CODE,
                     user_id,
@@ -467,10 +472,16 @@ def register_handlers(dp: Dispatcher):
                     status="success"
                 )
 
-                await message.answer(
+                format_msg = await message.answer(
                     t("choose_format", user_id),
                     reply_markup=format_keyboard(user_id)
                 )
+
+                bot_state.smule_pending[user_id] = {
+                    "url": url,
+                    "chat_id": format_msg.chat.id,
+                    "format_message_id": format_msg.message_id,
+                }
                 return
 
             except Exception as e:
