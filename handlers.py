@@ -120,6 +120,13 @@ def register_handlers(dp: Dispatcher):
 
         await callback.answer()
 
+        now = datetime.now(timezone.utc)
+        msg_time = callback.message.date if callback.message else now
+        lag_sec = (now - msg_time).total_seconds()
+
+        if lag_sec > 10:
+            await callback.message.answer(t("lag_long", user_id))
+
         if chat_id and format_message_id:
             await callback.bot.edit_message_text(
                 chat_id=chat_id,
@@ -128,11 +135,6 @@ def register_handlers(dp: Dispatcher):
             )
         else:
             await callback.message.answer(t("status_preparing", user_id))
-
-        if mode == "audio":
-            await callback.message.answer(t("status_audio", user_id))
-        else:
-            await callback.message.answer(t("status_video", user_id))
 
         file_path = None
         extract = None
