@@ -474,18 +474,49 @@ def register_handlers(dp: Dispatcher):
                 perf_type = (extract.get("perf") or {}).get("perf_type")
 
                 if perf_type == "audio":
-                    mode, media_url = pick_smule_media(extract, preferred_mode="audio")
+                    await message.answer(t("status_preparing", user_id))
+                    await message.answer(t("status_audio", user_id))
 
-                    if not mode or not media_url:
-                        insert_event_safe(
-                            BOT_CODE,
-                            user_id,
-                            "media_url_not_found",
-                            status="fail",
-                            error_text_short="audio_only_no_media"
-                        )
-                        await message.answer(t("error", user_id))
-                        return
+                    temp_path = await download_smule_file_in_browser(
+                        extract,
+                        pick_smule_media(extract, preferred_mode="audio")[1],
+                        "audio"
+                    )
+                    title = build_smule_title(extract)
+                    file_path = build_final_path(temp_path, title, "audio")
+
+                    if not file_path or not os.path.exists(file_path):
+                        raise RuntimeError("File not created")
+
+                    size = os.path.getsize(file_path)
+                    size_mb = round(size / (1024 * 1024), 2)
+
+                    result_text = t("file_info", user_id).format(
+                        ext="M4A",
+                        size=size_mb
+                    )
+
+                    final_caption = t("success", user_id) + "\n\n" + result_text
+                    await send_media_with_retry(
+                        callback=SimpleNamespace(message=message),
+                        user_id=user_id,
+                        file_path=file_path,
+                        mode="audio",
+                        title=title,
+                        uploader=(extract.get("perf") or {}).get("artist"),
+                        caption=final_caption,
+                        retry_text=t("send_retry", user_id)
+                    )
+
+                    insert_event_safe(
+                        BOT_CODE,
+                        user_id,
+                        "download_success",
+                        status="success",
+                        mode="audio",
+                        file_size_bytes=size
+                    )
+                    return
 
                 format_msg = await message.answer(
                     t("choose_format", user_id),
