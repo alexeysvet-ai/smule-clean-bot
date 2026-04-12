@@ -127,7 +127,6 @@ def register_handlers(dp: Dispatcher):
                 text=t("status_preparing", user_id)
             )
         else:
-            await callback.message.edit_reply_markup(reply_markup=None)
             await callback.message.answer(t("status_preparing", user_id))
 
         if mode == "audio":
@@ -471,6 +470,22 @@ def register_handlers(dp: Dispatcher):
                     "extract_success",
                     status="success"
                 )
+
+                perf_type = (extract.get("perf") or {}).get("perf_type")
+
+                if perf_type == "audio":
+                    mode, media_url = pick_smule_media(extract, preferred_mode="audio")
+
+                    if not mode or not media_url:
+                        insert_event_safe(
+                            BOT_CODE,
+                            user_id,
+                            "media_url_not_found",
+                            status="fail",
+                            error_text_short="audio_only_no_media"
+                        )
+                        await message.answer(t("error", user_id))
+                        return
 
                 format_msg = await message.answer(
                     t("choose_format", user_id),
