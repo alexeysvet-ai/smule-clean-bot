@@ -21,6 +21,7 @@ from config import (
     MEM_LOG_INTERVAL_SEC,
 )
 from bot_core.utils import log
+from bot_core.media import send_media_with_retry
 from texts import TEXTS
 from bot_core.alerts import send_alert, build_download_fail_alert
 from bot_core.events import insert_bot_entry
@@ -317,19 +318,17 @@ def register_handlers(dp: Dispatcher):
                 )
 
                 final_caption = t("success", user_id) + "\n\n" + result_text
+                await send_media_with_retry(
+                    callback=types.SimpleNamespace(message=message),
+                    user_id=user_id,
+                    file_path=file_path,
+                    mode=mode,
+                    title=title,
+                    uploader=(extract.get("perf") or {}).get("artist"),
+                    caption=final_caption,
+                    t=t
+               )
 
-                if mode == "audio":
-                    await message.answer_audio(
-                        types.FSInputFile(file_path),
-                        title=title,
-                        performer=(extract.get("perf") or {}).get("artist") or "",
-                        caption=final_caption
-                    )
-                else:
-                    await message.answer_video(
-                        types.FSInputFile(file_path),
-                        caption=final_caption
-                    )
                 log_mem("after_send")
                 insert_event_safe(
                     BOT_CODE,
