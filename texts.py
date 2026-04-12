@@ -1,3 +1,4 @@
+# === texts.py (FULL FILE) ===
 TEXTS = {
     # --- Приветствие ---
     "welcome": {
@@ -28,8 +29,8 @@ TEXTS = {
 
     # --- Стартовая информация ---
     "start": {
-        "ru": "🚀 Начинаю обработку",
-        "en": "🚀 Starting processing"
+        "ru": "🚀 Начинаю обработку...",
+        "en": "🚀 Starting processing..."
     },
 
     # --- Статусы ---
@@ -45,10 +46,9 @@ TEXTS = {
 
     # --- Разделение UX ---
     "status_video": {
-        "ru": "⏳ Загружаю видео...\nЭто может занять до нескольких минут, пожалуйста подождите.",
+        "ru": "⏳ Загружаю видео...\nЭто может занять до нескольких минут, пожалуйста подождите...",
         "en": "⏳ Downloading video...\nThis may take a few minutes, please wait..."
     },
-    
 
     "status_audio": {
         "ru": "⏳ Загружаю аудио...\nЭто может занять до нескольких минут, пожалуйста подождите...",
@@ -86,33 +86,65 @@ TEXTS = {
         "ru": "Скачан файл | {ext} | {size} MB",
         "en": "File downloaded | {ext} | {size} MB"
     },
-# === ADD TO TEXTS ===
-# BUILD: 20260326-02
 
-"lag_short": {
-    "ru": "⏳ Запуск занял чуть больше времени, чем обычно\n🚀 Начинаю обработку...",
-    "en": "⏳ Startup took a bit longer than usual\n🚀 Starting processing..."
-},
+    "lag_short": {
+        "ru": "⏳ Запуск занял чуть больше времени, чем обычно\n🚀 Начинаю обработку...",
+        "en": "⏳ Startup took a bit longer than usual\n🚀 Starting processing..."
+    },
 
-"lag_long": {
-    "ru": "😴 Похоже, я немного задремал...\n🚀 Уже проснулся и начинаю обработку",
-    "en": "😴 Looks like I dozed off for a bit...\n🚀 I'm awake now and starting processing"
-},
+    "lag_long": {
+        "ru": "😴 Похоже, я немного задремал...\n🚀 Уже проснулся и начинаю обработку",
+        "en": "😴 Looks like I dozed off for a bit...\n🚀 I'm awake now and starting processing"
+    },
 
-"invalid_url": {
-    "ru": "Похоже, это не ссылка 🙂\n\nПришли, пожалуйста, ссылку на видео (YouTube, VK и т.д.), и я помогу его скачать",
-    "en": "That doesn't look like a valid link 🙂\n\nPlease send a video URL (YouTube, VK, etc.), and I’ll help download it"
-},   
-"expired_request": {
-    "ru": "Похоже, запрос устарел 🙂\n\nОтправь ссылку ещё раз, и я продолжу",
-    "en": "Looks like this request has expired 🙂\n\nPlease send the link again and I'll continue"
+    "invalid_url": {
+        "ru": "Похоже, это не ссылка 🙂\n\nПришли, пожалуйста, ссылку на Smule запись, и я помогу его скачать",
+        "en": "That doesn't look like a valid link 🙂\n\nPlease send a Smule link, and I’ll help download it"
+    },
+
+    "expired_request": {
+        "ru": "Похоже, запрос устарел 🙂\n\nОтправь ссылку ещё раз, и я продолжу",
+        "en": "Looks like this request has expired 🙂\n\nPlease send the link again and I'll continue"
+    },
+
+    "stage_restricted": {
+        "ru": "⚙️ Этот бот предназначен для технических целей и доступ к нему ограничен.",
+        "en": "⚙️ This bot is intended for technical purposes and access is restricted."
+    },
+
+    "access_denied": {
+        "ru": "⛔ У вас нет доступа к этому боту",
+        "en": "⛔ You do not have access to this bot"
+    },
+    "status_preparing": {
+        "ru": "⚙️ Подготавливаю медиа файл...",
+        "en": "⚙️ Preparing media file..."
+    },
+    "smule_media_not_ready": {
+        "ru": "⏳ Похоже, Smule ещё готовит это видео.\n\nПопробуй отправить ссылку чуть позже.",
+        "en": "⏳ It looks like Smule is still preparing this video.\n\nPlease try sending the link again a bit later."
+    },
+
+    "smule_extract_error": {
+        "ru": "😔 Не удалось обработать ссылку прямо сейчас.\n\nПопробуй ещё раз чуть позже.",
+        "en": "😔 Failed to process this link right now.\n\nPlease try again a bit later."
+    },
+    "send_retry": {
+        "ru": "⚠️ Возникли проблемы с отправкой файла. Пробую ещё раз...",
+        "en": "⚠️ There was a problem sending the file. Retrying..."
 },
-"stage_restricted": {
-    "ru": "⚙️ Этот бот предназначен для технических целей и доступ к нему ограничен.",
-    "en": "⚙️ This bot is intended for technical purposes and access is restricted."
-},
-"access_denied": {
-    "ru": "⛔ У вас нет доступа к этому боту",
-    "en": "⛔ You do not have access to this bot"
-}
+    "choose_format": {
+        "ru": "Выбери, что скачать:",
+        "en": "Choose what to download:"
+    },
+
+    "format_audio": {
+        "ru": "🎵 Аудио",
+        "en": "🎵 Audio"
+    },
+
+    "format_video": {
+        "ru": "🎬 Видео",
+        "en": "🎬 Video"
+    },
 }
