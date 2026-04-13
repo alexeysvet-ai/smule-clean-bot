@@ -147,4 +147,8 @@ TEXTS = {
         "ru": "🎬 Видео",
         "en": "🎬 Video"
     },
+    "no_media": {
+        "ru": "❌ По этой ссылке нет доступного медиа",
+        "en": "❌ No downloadable media found for this link"
+}
 }
