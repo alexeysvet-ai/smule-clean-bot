@@ -379,7 +379,14 @@ def register_handlers(dp: Dispatcher):
                     status="success"
                 )
 
+                log(f"[SMULE EXTRACT START] user_id={user_id} message_id={message_id} url={url}")
                 extract = await extract_smule(url, keep_browser_open=True)
+                log(
+                    f"[SMULE EXTRACT DONE] user_id={user_id} message_id={message_id} "
+                    f"has_extract={bool(extract)} "
+                    f"ok={(extract.get('ok') if extract else None)} "
+                    f"reason={(extract.get('reason') if extract else None)}"
+                )
 
                 if not extract or not extract.get("ok"):
                     insert_event_safe(
@@ -414,9 +421,15 @@ def register_handlers(dp: Dispatcher):
 
                 perf = extract.get("perf") or {}
 
+                log(f"[SMULE PICK MEDIA START] user_id={user_id} message_id={message_id}")
                 auto_mode, auto_media_url = pick_smule_media(extract)
+                log(
+                    f"[SMULE PICK MEDIA RESULT] user_id={user_id} message_id={message_id} "
+                    f"auto_mode={auto_mode} has_media_url={bool(auto_media_url)}"
+                )
 
                 if not auto_mode or not auto_media_url:
+                    log(f"[SMULE NO MEDIA] user_id={user_id} message_id={message_id} url={url}")
                     insert_event_safe(
                         BOT_CODE,
                         user_id,
@@ -428,6 +441,10 @@ def register_handlers(dp: Dispatcher):
 
                 perf_type = perf.get("perf_type")
                 perf_status = perf.get("perf_status")
+                log(
+                    f"[SMULE PERF STATUS] user_id={user_id} message_id={message_id} "
+                    f"perf_type={perf_type} perf_status={perf_status}"
+                )
 
                 if perf_status == "processing":
                     await close_smule_browser_extract(extract)
@@ -468,15 +485,46 @@ def register_handlers(dp: Dispatcher):
                             await message.answer(t("smule_media_not_ready", user_id))
                             return
 
+                    log(f"[SMULE EXTRACT RESTART START] user_id={user_id} message_id={message_id} url={url}")
                     extract = await extract_smule(url, keep_browser_open=True)
+                    log(
+                        f"[SMULE EXTRACT RESTART DONE] user_id={user_id} message_id={message_id} "
+                        f"has_extract={bool(extract)} "
+                        f"ok={(extract.get('ok') if extract else None)} "
+                        f"reason={(extract.get('reason') if extract else None)}"
+                    )
+
                     if not extract or not extract.get("ok"):
                         raise RuntimeError(
                             f"Browser extract failed: {extract.get('reason') if extract else 'no_extract'}"
                         )
 
                     perf = extract.get("perf") or {}
+
+                    log(f"[SMULE PICK MEDIA RESTART START] user_id={user_id} message_id={message_id}")
+                    auto_mode, auto_media_url = pick_smule_media(extract)
+                    log(
+                        f"[SMULE PICK MEDIA RESTART RESULT] user_id={user_id} message_id={message_id} "
+                        f"auto_mode={auto_mode} has_media_url={bool(auto_media_url)}"
+                    )
+
+                    if not auto_mode or not auto_media_url:
+                        log(f"[SMULE NO MEDIA AFTER PROCESSING] user_id={user_id} message_id={message_id} url={url}")
+                        insert_event_safe(
+                            BOT_CODE,
+                            user_id,
+                            "no_media_found",
+                            status="fail"
+                        )
+                        await message.answer(t("no_media", user_id))
+                        return
+
                     perf_type = perf.get("perf_type")
                     perf_status = perf.get("perf_status")
+                    log(
+                        f"[SMULE PERF STATUS AFTER PROCESSING] user_id={user_id} message_id={message_id} "
+                        f"perf_type={perf_type} perf_status={perf_status}"
+                    )
 
                 if not hasattr(bot_state, "smule_pending"):
                     bot_state.smule_pending = {}
