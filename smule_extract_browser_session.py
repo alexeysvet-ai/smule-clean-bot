@@ -133,27 +133,27 @@ async def extract_smule(url: str, keep_browser_open: bool = False) -> dict:
                     keep_browser_open=True
                 )
 
-                if perf or media:
-                    return {
-                        "ok": True,
-                        "perf": perf,
-                        "media": media,
-                        "proxy": proxy,
-                        "context": context,
-                        "page": page,
-                        "browser": browser,
-                        "playwright": playwright,
-                    }
-            else:
-                perf, media = await _extract_with_browser(url, proxy_cfg)
+                return {
+                    "ok": True,
+                    "perf": perf,
+                    "media": media,
+                    "proxy": proxy,
+                    "context": context,
+                    "page": page,
+                    "browser": browser,
+                    "playwright": playwright,
+                    "reason": None if (perf or media) else "no_media_on_page",
+                }
 
-                if perf or media:
-                    return {
-                        "ok": True,
-                        "perf": perf,
-                        "media": media,
-                        "proxy": proxy,
-                    }
+            perf, media = await _extract_with_browser(url, proxy_cfg)
+
+            return {
+                "ok": True,
+                "perf": perf,
+                "media": media,
+                "proxy": proxy,
+                "reason": None if (perf or media) else "no_media_on_page",
+            }
 
         except Exception as e:
             print(f"[SMULE PROXY FAIL] {proxy} err={e}")
