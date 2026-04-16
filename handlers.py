@@ -20,6 +20,7 @@ from config import (
     FLOW_TIMEOUT_SEC,
     MEM_LOG_INTERVAL_SEC,
 )
+from smule_tags import retag_smule_audio
 from bot_core.utils import log
 from bot_core.media import send_media_with_retry
 from texts import TEXTS
@@ -225,6 +226,9 @@ def register_handlers(dp: Dispatcher):
 
             if not file_path or not os.path.exists(file_path):
                 raise RuntimeError("File not created")
+
+            if selected_mode == "audio":
+                retag_smule_audio(file_path, extract)
 
             size = os.path.getsize(file_path)
             size_mb = round(size / (1024 * 1024), 2)
@@ -489,6 +493,8 @@ def register_handlers(dp: Dispatcher):
 
                     if not file_path or not os.path.exists(file_path):
                         raise RuntimeError("File not created")
+
+                    retag_smule_audio(file_path, extract)
 
                     size = os.path.getsize(file_path)
                     size_mb = round(size / (1024 * 1024), 2)
