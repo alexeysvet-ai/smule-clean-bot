@@ -65,7 +65,6 @@ async def handle_audio_download(
     if not selected_mode or not media_url:
         raise RuntimeError("Audio media URL not found")
 
-    await message_target.answer(t("status_preparing", user_id))
     await message_target.answer(t("status_audio", user_id))
 
     insert_event_safe(
@@ -137,7 +136,6 @@ async def handle_video_download(
     if not selected_mode or not media_url:
         raise RuntimeError("Video media URL not found")
 
-    await message_target.answer(t("status_preparing", user_id))
     await message_target.answer(t("status_video", user_id))
 
     insert_event_safe(
