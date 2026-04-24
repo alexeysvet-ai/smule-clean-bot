@@ -297,11 +297,14 @@ def register_handlers(dp: Dispatcher):
                     )
                     return
 
+                perf = extract.get("perf") or {}
                 log(
                     f"[SMULE EXTRACT RESULT] user_id={user_id} message_id={message_id} url={url} "
                     f"ok={extract.get('ok')} "
                     f"proxy={extract.get('proxy')} "
-                    f"perf_found={bool(extract.get('perf'))} "
+                    f"perf_found={bool(perf)} "
+                    f"perf_type={perf.get('perf_type')} "
+                    f"perf_status={perf.get('perf_status')} "
                     f"media_count={len(extract.get('media', []))}"
                 )
 
