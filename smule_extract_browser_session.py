@@ -26,6 +26,49 @@ def build_proxy_config(proxy: str) -> dict:
     return {"server": f"{scheme}://{rest}"}
 
 
+async def _has_smule_result(page, media_urls: set) -> bool:
+    if media_urls:
+        return True
+
+    return await page.evaluate(
+        """
+        () => {
+          const p = window?.DataStore?.Pages?.Recording?.performance || null;
+          return Boolean(
+            p?.media_url ||
+            p?.video_media_url ||
+            p?.video_media_mp4_url ||
+            p?.perf_status === "processing"
+          );
+        }
+        """
+    )
+
+
+async def _wait_for_smule_result(page, media_urls: set, timeout_ms: int) -> bool:
+    if await _has_smule_result(page, media_urls):
+        return True
+
+    try:
+        await page.wait_for_function(
+            """
+            () => {
+              const p = window?.DataStore?.Pages?.Recording?.performance || null;
+              return Boolean(
+                p?.media_url ||
+                p?.video_media_url ||
+                p?.video_media_mp4_url ||
+                p?.perf_status === "processing"
+              );
+            }
+            """,
+            timeout=timeout_ms,
+        )
+        return True
+    except Exception:
+        return bool(media_urls)
+
+
 async def _open_page(browser, url: str):
     print(f"[SMULE OPEN PAGE START] url={url}")
     context = await browser.new_context(accept_downloads=True)
@@ -47,17 +90,18 @@ async def _open_page(browser, url: str):
     await page.goto(url, wait_until="domcontentloaded", timeout=6000)
     print(f"[SMULE OPEN PAGE AFTER GOTO] url={url}")
 
-    await page.wait_for_timeout(3000)
-    print(f"[SMULE OPEN PAGE AFTER WAIT1] url={url}")
+    ready = await _wait_for_smule_result(page, media_urls, timeout_ms=3000)
+    print(f"[SMULE OPEN PAGE WAIT_FAST] url={url} ready={ready} media_count={len(media_urls)}")
 
-    try:
-        await page.click("text=Accept Cookies", timeout=3000)
-        print(f"[SMULE OPEN PAGE COOKIE CLICKED] url={url}")
-    except Exception as e:
-        print(f"[SMULE OPEN PAGE COOKIE SKIP] url={url} error={e}")
+    if not ready:
+        try:
+            await page.click("text=Accept Cookies", timeout=1000)
+            print(f"[SMULE OPEN PAGE COOKIE CLICKED] url={url}")
+        except Exception as e:
+            print(f"[SMULE OPEN PAGE COOKIE SKIP] url={url} error={e}")
 
-    await page.wait_for_timeout(5000)
-    print(f"[SMULE OPEN PAGE AFTER WAIT2] url={url}")
+        ready = await _wait_for_smule_result(page, media_urls, timeout_ms=5000)
+        print(f"[SMULE OPEN PAGE WAIT_FINAL] url={url} ready={ready} media_count={len(media_urls)}")
 
     perf = await page.evaluate(
         """
