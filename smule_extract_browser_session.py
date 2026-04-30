@@ -252,25 +252,21 @@ async def download_smule_file_in_browser(extract: dict, media_url: str, mode: st
         # Формат прокси для aiohttp: "http://user:pass@host:port"
         proxy_url = proxy if proxy else None
 
-        import aiohttp
-        timeout = aiohttp.ClientTimeout(total=300)
-
-        async with aiohttp.ClientSession(
-            timeout=timeout,
-            cookies=cookies,
-        ) as session:
-            async with session.get(
+        async with AsyncSession(impersonate="chrome120") as session:
+            resp = await session.get(
                 media_url,
                 headers=headers,
-                proxy=proxy_url,
-            ) as resp:
-                print(f"[AIOHTTP STREAM] status={resp.status}")
-                resp.raise_for_status()
+                cookies=cookies,
+                proxies={"https": proxy} if proxy else None,
+                stream=True,
+            )
+            print(f"[CURL STREAM] status={resp.status_code}")
+            resp.raise_for_status()
 
-                with open(temp_path, "wb") as f:
-                    async for chunk in resp.content.iter_chunked(256 * 1024):
-                        if chunk:
-                            f.write(chunk)
+            with open(temp_path, "wb") as f:
+                async for chunk in resp.aiter_content(chunk_size=256 * 1024):
+                    if chunk:
+                        f.write(chunk)
 
         if not os.path.exists(temp_path) or os.path.getsize(temp_path) == 0:
             raise RuntimeError("Downloaded file is empty")
