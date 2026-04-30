@@ -227,6 +227,7 @@ async def download_smule_file_in_browser(extract: dict, media_url: str, mode: st
         page_url = page.url
 
         print(f"[CURL STREAM] cookie_names={list(cookies.keys())} ua={user_agent[:60]}")
+        print(f"[CURL STREAM] browser_proxy={proxy}")
 
         headers = {
             "User-Agent": user_agent,
@@ -242,7 +243,7 @@ async def download_smule_file_in_browser(extract: dict, media_url: str, mode: st
                 media_url,
                 headers=headers,
                 cookies=cookies,
-                proxies=None,  #{"https": proxy} if proxy else None,
+                proxies={"https": proxy} if proxy else None,
                 stream=True,
             )
             print(f"[CURL STREAM] status={resp.status_code}")
