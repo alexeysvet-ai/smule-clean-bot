@@ -227,9 +227,14 @@ async def download_smule_file_in_browser(extract: dict, media_url: str, mode: st
 
         user_agent = await page.evaluate("() => navigator.userAgent")
 
+        page_url = page.url
+
         headers = {
             "User-Agent": user_agent,
-            "Referer": "https://www.smule.com/",
+            "Referer": page_url,
+            "Origin": "https://www.smule.com",
+            "Accept": "*/*",
+            "Accept-Language": "en-US,en;q=0.9",
         }
 
         async with AsyncSession(impersonate="chrome120") as session:
