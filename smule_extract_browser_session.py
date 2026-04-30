@@ -213,21 +213,19 @@ async def download_smule_file_in_browser(extract: dict, media_url: str, mode: st
         raise RuntimeError("Browser context/page not available")
 
     suffix = ".m4a" if mode == "audio" else ".mp4"
-    fd, temp_path = tempfile.mkstemp(prefix="smule_curl_", suffix=suffix)
+    fd, temp_path = tempfile.mkstemp(prefix="smule_dl_", suffix=suffix)
     os.close(fd)
 
-    print(
-        f"[CURL STREAM] "
-        f"mode={mode} proxy={proxy} media_url={media_url}"
-    )
+    print(f"[AIOHTTP STREAM] mode={mode} proxy={proxy} media_url={media_url}")
 
     try:
+        # Берём куки и UA из живого браузерного контекста
         cookies_list = await context.cookies()
         cookies = {c["name"]: c["value"] for c in cookies_list}
-
         user_agent = await page.evaluate("() => navigator.userAgent")
-
         page_url = page.url
+
+        print(f"[AIOHTTP STREAM] cookie_count={len(cookies)} ua={user_agent[:60]}")
 
         headers = {
             "User-Agent": user_agent,
@@ -237,24 +235,28 @@ async def download_smule_file_in_browser(extract: dict, media_url: str, mode: st
             "Accept-Language": "en-US,en;q=0.9",
         }
 
-        async with AsyncSession(impersonate="chrome120") as session:
-            resp = await session.get(
+        # Формат прокси для aiohttp: "http://user:pass@host:port"
+        proxy_url = proxy if proxy else None
+
+        import aiohttp
+        timeout = aiohttp.ClientTimeout(total=300)
+
+        async with aiohttp.ClientSession(
+            timeout=timeout,
+            cookies=cookies,
+        ) as session:
+            async with session.get(
                 media_url,
                 headers=headers,
-                cookies=cookies,
-                proxies={"https": proxy} if proxy else None,
-                stream=True,
-            )
+                proxy=proxy_url,
+            ) as resp:
+                print(f"[AIOHTTP STREAM] status={resp.status}")
+                resp.raise_for_status()
 
-            print(f"[CURL STREAM] status={resp.status_code}")
-
-            resp.raise_for_status()
-
-            with open(temp_path, "wb") as f:
-                async for chunk in resp.aiter_content(chunk_size=256 * 1024):
-                    if not chunk:
-                        continue
-                    f.write(chunk)
+                with open(temp_path, "wb") as f:
+                    async for chunk in resp.content.iter_chunked(256 * 1024):
+                        if chunk:
+                            f.write(chunk)
 
         if not os.path.exists(temp_path) or os.path.getsize(temp_path) == 0:
             raise RuntimeError("Downloaded file is empty")
@@ -265,8 +267,7 @@ async def download_smule_file_in_browser(extract: dict, media_url: str, mode: st
         if os.path.exists(temp_path):
             os.remove(temp_path)
         raise
-
-
+    
 async def close_smule_browser_extract(extract: dict):
     page = extract.get("page")
     context = extract.get("context")
