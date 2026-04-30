@@ -249,7 +249,7 @@ async def download_smule_file_in_browser(extract: dict, media_url: str, mode: st
             "Accept-Language": "en-US,en;q=0.9",
         }
 
-        # Формат прокси для aiohttp: "http://user:pass@host:port"
+
         proxy_url = proxy if proxy else None
 
         async with AsyncSession(impersonate="chrome120") as session:
