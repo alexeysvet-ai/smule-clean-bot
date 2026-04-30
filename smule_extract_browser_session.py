@@ -242,7 +242,7 @@ async def download_smule_file_in_browser(extract: dict, media_url: str, mode: st
                 media_url,
                 headers=headers,
                 cookies=cookies,
-                proxies=none#{"https": proxy} if proxy else None,
+                proxies=None  #{"https": proxy} if proxy else None,
                 stream=True,
             )
             print(f"[CURL STREAM] status={resp.status_code}")
