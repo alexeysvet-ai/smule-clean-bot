@@ -1,6 +1,5 @@
 import os
 import tempfile
-import asyncio
 from playwright.async_api import async_playwright
 from proxy import get_active_proxies
 from config import DOWNLOAD_TIMEOUT
@@ -217,7 +216,7 @@ async def download_smule_file_in_browser(extract: dict, media_url: str, mode: st
     fd, temp_path = tempfile.mkstemp(prefix="smule_dl_", suffix=suffix)
     os.close(fd)
 
-    print(f"[AIOHTTP STREAM] mode={mode} proxy={proxy} media_url={media_url}")
+    print(f"[CURL STREAM] mode={mode} proxy={proxy} media_url={media_url}")
 
     try:
         # Берём куки и UA из живого браузерного контекста
@@ -227,19 +226,7 @@ async def download_smule_file_in_browser(extract: dict, media_url: str, mode: st
         
         page_url = page.url
 
-        # Триггер воспроизведения — чтобы браузер реально запросил CDN
-        try:
-            await page.click('[data-testid="play-button"]', timeout=3000)
-            await asyncio.sleep(1.5)
-            print(f"[AIOHTTP STREAM] play clicked")
-        except Exception as e:
-            print(f"[AIOHTTP STREAM] play click skip: {e}")
-
-        # Пересобираем куки после клика — могли обновиться
-        cookies_list = await context.cookies()
-        cookies = {c["name"]: c["value"] for c in cookies_list}
-
-        print(f"[AIOHTTP STREAM] cookie_names={list(cookies.keys())} ua={user_agent[:60]}")
+        print(f"[CURL STREAM] cookie_names={list(cookies.keys())} ua={user_agent[:60]}")
 
         headers = {
             "User-Agent": user_agent,
@@ -249,8 +236,6 @@ async def download_smule_file_in_browser(extract: dict, media_url: str, mode: st
             "Accept-Language": "en-US,en;q=0.9",
         }
 
-
-        proxy_url = proxy if proxy else None
 
         async with AsyncSession(impersonate="chrome120") as session:
             resp = await session.get(
