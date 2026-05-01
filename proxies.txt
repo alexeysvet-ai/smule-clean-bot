@@ -1,10 +1,5 @@
-http://rbmvwexp:e8srpu5y95mm@198.23.239.134:6540
-http://rbmvwexp:e8srpu5y95mm@45.38.107.97:6014
-http://rbmvwexp:e8srpu5y95mm@107.172.163.27:6543
-http://rbmvwexp:e8srpu5y95mm@198.105.121.200:6462
-http://rbmvwexp:e8srpu5y95mm@216.10.27.159:6837
-http://rbmvwexp:e8srpu5y95mm@142.111.67.146:5611
-http://rbmvwexp:e8srpu5y95mm@191.96.254.138:6185
-http://rbmvwexp:e8srpu5y95mm@31.58.9.4:6077
-http://rbmvwexp:e8srpu5y95mm@104.239.107.47:5699
-http://rbmvwexp:e8srpu5y95mm@31.59.20.176:6754
+http://gnktxrqy:munhcy6msboc@192.53.67.180:5729
+http://gnktxrqy:munhcy6msboc@82.22.89.57:7763
+http://gnktxrqy:munhcy6msboc@208.66.76.39:5963
+http://gnktxrqy:munhcy6msboc@9.142.40.66:6736
+http://gnktxrqy:munhcy6msboc@130.180.235.84:5804
