@@ -1,10 +1,11 @@
 import os
 import tempfile
+import asyncio
 from playwright.async_api import async_playwright
 from proxy import get_active_proxies
 from config import DOWNLOAD_TIMEOUT
 from logger import log_mem
-from curl_cffi.requests import AsyncSession
+from curl_cffi.requests import Session
 
 def build_proxy_config(proxy: str) -> dict:
     raw = proxy.strip()
@@ -191,6 +192,7 @@ async def extract_smule(url: str, keep_browser_open: bool = False) -> dict:
                     "perf": perf,
                     "media": media,
                     "proxy": proxy,
+                    "source_url": url,
                     "context": context,
                     "page": page,
                     "browser": browser,
@@ -205,6 +207,7 @@ async def extract_smule(url: str, keep_browser_open: bool = False) -> dict:
                 "perf": perf,
                 "media": media,
                 "proxy": proxy,
+                "source_url": url,
                 "reason": None if (perf or media) else "no_media_on_page",
             }
 
@@ -212,6 +215,61 @@ async def extract_smule(url: str, keep_browser_open: bool = False) -> dict:
             print(f"[SMULE PROXY FAIL] {proxy} err={e}")
 
     return {"ok": False, "reason": "no_working_proxy"}
+
+
+def _short_headers(headers) -> dict:
+    interesting = {
+        "server",
+        "content-type",
+        "content-length",
+        "cf-ray",
+        "cf-cache-status",
+        "x-cache",
+        "via",
+        "date",
+    }
+    return {
+        key: value
+        for key, value in dict(headers).items()
+        if key.lower() in interesting
+    }
+
+
+def _download_with_curl_session(
+    *,
+    media_url: str,
+    referer_url: str,
+    cookies: dict,
+    proxy: str | None,
+    temp_path: str,
+) -> None:
+    headers = {
+        "Referer": referer_url,
+        "Origin": "https://www.smule.com",
+    }
+
+    proxies = {"https": proxy} if proxy else None
+
+    with Session(impersonate="chrome120") as session:
+        resp = session.get(
+            media_url,
+            headers=headers,
+            cookies=cookies,
+            proxies=proxies,
+            timeout=DOWNLOAD_TIMEOUT,
+        )
+        print(f"[CURL SESSION] status={resp.status_code} headers={_short_headers(resp.headers)}")
+
+        if resp.status_code >= 400:
+            preview = resp.text[:1000] if resp.text else ""
+            print(f"[CURL SESSION] error_preview={preview!r}")
+            resp.raise_for_status()
+
+        with open(temp_path, "wb") as f:
+            f.write(resp.content)
+
+        print(f"[CURL SESSION] saved bytes={len(resp.content)}")
+
 
 async def download_smule_file_in_browser(extract: dict, media_url: str, mode: str) -> str:
     context = extract.get("context")
@@ -228,42 +286,25 @@ async def download_smule_file_in_browser(extract: dict, media_url: str, mode: st
     print(f"[CURL STREAM] mode={mode} proxy={proxy} media_url={media_url}")
 
     try:
-        # Берём куки и UA из живого браузерного контекста
+        # Берём куки из живого браузерного контекста.
         cookies_list = await context.cookies()
         cookies = {c["name"]: c["value"] for c in cookies_list}
-        user_agent = await page.evaluate("() => navigator.userAgent")
-        
-        page_url = page.url
+        referer_url = extract.get("source_url") or page.url
 
-        print(f"[CURL STREAM] cookie_names={list(cookies.keys())} ua={user_agent[:60]}")
+        print(f"[CURL STREAM] cookie_names={list(cookies.keys())}")
         print(f"[CURL STREAM] browser_proxy={proxy}")
         print(f"[CURL STREAM] full_media_url={media_url}")
+        print(f"[CURL STREAM] referer={referer_url}")
         print(f"[CURL STREAM] cf_clearance={cookies.get('cf_clearance', 'MISSING')[:50]}")
 
-        headers = {
-            "User-Agent": user_agent,
-            "Referer": page_url,
-            "Origin": "https://www.smule.com",
-            "Accept": "*/*",
-            "Accept-Language": "en-US,en;q=0.9",
-        }
-
-
-        async with AsyncSession(impersonate="chrome120") as session:
-            resp = await session.get(
-                media_url,
-                headers=headers,
-                cookies=cookies,
-                proxies={"http": proxy, "https": proxy} if proxy else None,
-                stream=True,
-            )
-            print(f"[CURL STREAM] status={resp.status_code}")
-            resp.raise_for_status()
-
-            with open(temp_path, "wb") as f:
-                async for chunk in resp.aiter_content(chunk_size=256 * 1024):
-                    if chunk:
-                        f.write(chunk)
+        await asyncio.to_thread(
+            _download_with_curl_session,
+            media_url=media_url,
+            referer_url=referer_url,
+            cookies=cookies,
+            proxy=proxy,
+            temp_path=temp_path,
+        )
 
         if not os.path.exists(temp_path) or os.path.getsize(temp_path) == 0:
             raise RuntimeError("Downloaded file is empty")
