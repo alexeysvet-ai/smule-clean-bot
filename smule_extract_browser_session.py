@@ -90,7 +90,7 @@ async def _open_page(browser, url: str):
     await page.goto(url, wait_until="domcontentloaded", timeout=6000)
     print(f"[SMULE OPEN PAGE AFTER GOTO] url={url}")
 
-    ready = await _wait_for_smule_result(page, media_urls, timeout_ms=3000)
+    ready = await _wait_for_smule_result(page, media_urls, timeout_ms=6000)
     print(f"[SMULE OPEN PAGE WAIT_FAST] url={url} ready={ready} media_count={len(media_urls)}")
 
     if not ready:
@@ -100,7 +100,7 @@ async def _open_page(browser, url: str):
         except Exception as e:
             print(f"[SMULE OPEN PAGE COOKIE SKIP] url={url} error={e}")
 
-        ready = await _wait_for_smule_result(page, media_urls, timeout_ms=5000)
+        ready = await _wait_for_smule_result(page, media_urls, timeout_ms=8000)
         print(f"[SMULE OPEN PAGE WAIT_FINAL] url={url} ready={ready} media_count={len(media_urls)}")
 
     perf = await page.evaluate(
