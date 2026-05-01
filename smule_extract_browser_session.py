@@ -100,7 +100,7 @@ async def _open_page(browser, url: str):
         print(f"[SMULE OPEN PAGE COOKIE SKIP] url={url} error={e}")
 
     await page.wait_for_timeout(5000)
-    print(f"[SMULE OPEN PAGE AFTER WAIT2] url={url}") PAGE NEW PAGE OK] url={url}")
+    print(f"[SMULE OPEN PAGE AFTER WAIT2] url={url}")
 
     media_urls = set()
 
