@@ -54,6 +54,7 @@ def pick_smule_media(
 
     if preferred_mode == "audio":
         if direct_audio:
+            print(f"[PICK MEDIA] audio url={direct_audio}")
             return "audio", direct_audio
         if media_m4a:
             return "audio", media_m4a
