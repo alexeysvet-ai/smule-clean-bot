@@ -90,6 +90,31 @@ async def _open_page(browser, url: str):
     await page.goto(url, wait_until="domcontentloaded", timeout=6000)
     print(f"[SMULE OPEN PAGE AFTER GOTO] url={url}")
 
+    await page.wait_for_timeout(3000)
+    print(f"[SMULE OPEN PAGE AFTER WAIT1] url={url}")
+
+    try:
+        await page.click("text=Accept Cookies", timeout=3000)
+        print(f"[SMULE OPEN PAGE COOKIE CLICKED] url={url}")
+    except Exception as e:
+        print(f"[SMULE OPEN PAGE COOKIE SKIP] url={url} error={e}")
+
+    await page.wait_for_timeout(5000)
+    print(f"[SMULE OPEN PAGE AFTER WAIT2] url={url}") PAGE NEW PAGE OK] url={url}")
+
+    media_urls = set()
+
+    def on_request(req):
+        u = req.url
+        if ".m4a" in u or ".mp4" in u or ".m3u8" in u:
+            media_urls.add(u)
+
+    page.on("request", on_request)
+    print(f"[SMULE OPEN PAGE BEFORE GOTO] url={url}")
+
+    await page.goto(url, wait_until="domcontentloaded", timeout=6000)
+    print(f"[SMULE OPEN PAGE AFTER GOTO] url={url}")
+
     ready = await _wait_for_smule_result(page, media_urls, timeout_ms=6000)
     print(f"[SMULE OPEN PAGE WAIT_FAST] url={url} ready={ready} media_count={len(media_urls)}")
 
