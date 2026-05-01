@@ -90,18 +90,17 @@ async def _open_page(browser, url: str):
     await page.goto(url, wait_until="domcontentloaded", timeout=6000)
     print(f"[SMULE OPEN PAGE AFTER GOTO] url={url}")
 
-    ready = await _wait_for_smule_result(page, media_urls, timeout_ms=3000)
-    print(f"[SMULE OPEN PAGE WAIT_FAST] url={url} ready={ready} media_count={len(media_urls)}")
+    await page.wait_for_timeout(3000)
+    print(f"[SMULE OPEN PAGE AFTER WAIT1] url={url}")
 
-    if not ready:
-        try:
-            await page.click("text=Accept Cookies", timeout=1000)
-            print(f"[SMULE OPEN PAGE COOKIE CLICKED] url={url}")
-        except Exception as e:
-            print(f"[SMULE OPEN PAGE COOKIE SKIP] url={url} error={e}")
+    try:
+        await page.click("text=Accept Cookies", timeout=3000)
+        print(f"[SMULE OPEN PAGE COOKIE CLICKED] url={url}")
+    except Exception as e:
+        print(f"[SMULE OPEN PAGE COOKIE SKIP] url={url} error={e}")
 
-        ready = await _wait_for_smule_result(page, media_urls, timeout_ms=5000)
-        print(f"[SMULE OPEN PAGE WAIT_FINAL] url={url} ready={ready} media_count={len(media_urls)}")
+    await page.wait_for_timeout(5000)
+    print(f"[SMULE OPEN PAGE AFTER WAIT2] url={url}")
 
     perf = await page.evaluate(
         """
@@ -177,6 +176,16 @@ async def extract_smule(url: str, keep_browser_open: bool = False) -> dict:
                     keep_browser_open=True
                 )
 
+                if not perf and not media:
+                    await close_smule_browser_extract({
+                        "page": page,
+                        "context": context,
+                        "browser": browser,
+                        "playwright": playwright,
+                    })
+                    print(f"[SMULE PROXY SKIP] {proxy} reason=no_perf_no_media")
+                    continue
+
                 return {
                     "ok": True,
                     "perf": perf,
@@ -213,43 +222,46 @@ async def download_smule_file_in_browser(extract: dict, media_url: str, mode: st
         raise RuntimeError("Browser context/page not available")
 
     suffix = ".m4a" if mode == "audio" else ".mp4"
-    fd, temp_path = tempfile.mkstemp(prefix="smule_curl_", suffix=suffix)
+    fd, temp_path = tempfile.mkstemp(prefix="smule_dl_", suffix=suffix)
     os.close(fd)
 
-    print(
-        f"[CURL STREAM] "
-        f"mode={mode} proxy={proxy} media_url={media_url}"
-    )
+    print(f"[CURL STREAM] mode={mode} proxy={proxy} media_url={media_url}")
 
     try:
+        # Берём куки и UA из живого браузерного контекста
         cookies_list = await context.cookies()
         cookies = {c["name"]: c["value"] for c in cookies_list}
-
         user_agent = await page.evaluate("() => navigator.userAgent")
+        
+        page_url = page.url
+
+        print(f"[CURL STREAM] cookie_names={list(cookies.keys())} ua={user_agent[:60]}")
+        print(f"[CURL STREAM] browser_proxy={proxy}")
 
         headers = {
             "User-Agent": user_agent,
-            "Referer": "https://www.smule.com/",
+            "Referer": page_url,
+            "Origin": "https://www.smule.com",
+            "Accept": "*/*",
+            "Accept-Language": "en-US,en;q=0.9",
         }
+
 
         async with AsyncSession(impersonate="chrome120") as session:
             resp = await session.get(
                 media_url,
                 headers=headers,
                 cookies=cookies,
-                proxies={"https": proxy} if proxy else None,
+                proxies={"http": proxy, "https": proxy} if proxy else None,
                 stream=True,
             )
-
             print(f"[CURL STREAM] status={resp.status_code}")
-
             resp.raise_for_status()
 
             with open(temp_path, "wb") as f:
                 async for chunk in resp.aiter_content(chunk_size=256 * 1024):
-                    if not chunk:
-                        continue
-                    f.write(chunk)
+                    if chunk:
+                        f.write(chunk)
 
         if not os.path.exists(temp_path) or os.path.getsize(temp_path) == 0:
             raise RuntimeError("Downloaded file is empty")
@@ -260,7 +272,6 @@ async def download_smule_file_in_browser(extract: dict, media_url: str, mode: st
         if os.path.exists(temp_path):
             os.remove(temp_path)
         raise
-
 
 async def close_smule_browser_extract(extract: dict):
     page = extract.get("page")
