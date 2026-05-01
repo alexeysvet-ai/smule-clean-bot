@@ -177,6 +177,16 @@ async def extract_smule(url: str, keep_browser_open: bool = False) -> dict:
                     keep_browser_open=True
                 )
 
+                if not perf and not media:
+                    await close_smule_browser_extract({
+                        "page": page,
+                        "context": context,
+                        "browser": browser,
+                        "playwright": playwright,
+                    })
+                    print(f"[SMULE PROXY SKIP] {proxy} reason=no_perf_no_media")
+                    continue
+
                 return {
                     "ok": True,
                     "perf": perf,
